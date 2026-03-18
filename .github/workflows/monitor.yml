@@ -1,0 +1,43 @@
+name: Moodle Monitor Bot
+
+on:
+    schedule:
+      - cron: '58 12,14,23 * * *'  # 台灣 07:58, 20:58, 22:58
+      - cron: '8 4 * * *'          # 台灣 12:08
+      - cron: '18 8 * * *'         # 台灣 16:18
+      - cron: '0 10 * * *'         # 台灣 18:00    
+    workflow_dispatch: 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: Run Moodle Monitor
+        env:
+          MOODLE_PASSWORD: ${{ secrets.MOODLE_PASSWORD }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          TZ: Asia/Taipei 
+        run: python main_monitor.py
+
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto update Moodle JSON [skip ci]"
+          file_pattern: 'moodle_data_*.json'
