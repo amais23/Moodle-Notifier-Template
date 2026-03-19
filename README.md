@@ -1,6 +1,6 @@
 # NTNU Moodle 專用 LINE 通知器(模板)
 
-這是一個部署在 GitHub Actions 上的自動化 Python 腳本，用來 24 小時監控師大 Moodle 的課程更新與作業，並發送 LINE 通知給使用者。
+這是一個部署在 GitHub Actions 上的自動化 Python 腳本，用來 24 小時監控師大 Moodle 的課程更新與作業，並利用自己專屬的的 LINE 官方帳號發送 LINE 通知給使用者。
 
 ## 核心功能 (Core Features)
 
@@ -15,14 +15,15 @@
 
 請依照以下步驟完成雲端自動化部署：
 
-### 步驟 0：事前準備 (取得 LINE API 與 User ID)
+### 步驟 0：事前準備 (取得你專屬的LINE官方帳號)
 
 本專案使用 LINE Messaging API 來發送通知，請先至 [LINE Developers 控制台](https://developers.line.biz/) 完成以下準備：
 
-1. 登入並建立一個 Provider，接著創建一個 **Messaging API** 頻道 (Channel)。
-2. **取得 LINE_TOKEN**：切換到 `Messaging API` 頁籤，滑到最下方的 `Channel access token (long-lived)`，點擊 **Issue** 產生 Token 並複製。
-3. **取得 LINE_USER_ID**：切換到 `Basic settings` 頁籤，滑到最下方的 `Your user ID`，複製這串以 `U` 開頭的字串。
-
+1. 先至 [LINE Developers 控制台](https://developers.line.biz/en/console/) 登入並建立一個 Provider，並且填入任意 Provider name，接著創建一個 **Messaging API** 頻道 (Create a **Messaging API** Channel)。接著建立一個 LINE 官方帳號(Create a LINE Official Account)，並且填入基本資料，不須申請認證帳號。
+2. 接著進入 [LINE 官方帳號管理](https://manager.line.biz/) 進入你創建的官方帳號主頁，點選右側設定，在設定頁面左側選擇列表中找到 Messaging API，點擊啟用Messaging API，並且選擇你的 Provider。
+3. 回到 [LINE Developers 控制台](https://developers.line.biz/en/console/) ，選擇你的 Messaging API 頻道。
+4. **取得 LINE_USER_ID**：切換到 `Basic settings` 頁籤，滑到最下方的 `Your user ID`，複製這串以 `U` 開頭的字串。
+5. **取得 LINE_TOKEN**：切換到 `Messaging API` 頁籤，滑到最下方的 `Channel access token (long-lived)`，點擊 **Issue** 產生 Token 並複製。
 > **💡 重要提醒**：請務必先在 `Messaging API` 頁籤掃描 QR Code，將你剛創建的機器人加為好友，它才有權限傳訊息給你！
 
 ### 步驟 1：建立你自己的私有倉庫
