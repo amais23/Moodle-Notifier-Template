@@ -11,14 +11,29 @@ from datetime import datetime, timedelta
 # ==========================================
 
 try:
-    MOODLE_USERNAME = "請填寫學號"  # <--- 填寫你的學號
-    MOODLE_PASSWORD = os.environ.get("MOODLE_PASSWORD") # <--- 在 Setting > secrets and variables > Repository secrets 中設定 MOODLE_PASSWORD
-    LINE_USER_ID = "請填寫你的LINE_USER_ID" # <--- 填寫你的 ID (U開頭)
-    LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_TOKEN")# <--- 在 Setting > secrets and variables > Repository secrets 中設定 LINE_TOKEN
-    TARGET_SEMESTER = "1142" # <--- 填寫當前的學期
+    MOODLE_USERNAME = os.environ.get(
+        "MOODLE_USERNAME"
+    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 MOODLE_USERNAME
+    MOODLE_PASSWORD = os.environ.get(
+        "MOODLE_PASSWORD"
+    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 MOODLE_PASSWORD
+    LINE_USER_ID = os.environ.get(
+        "LINE_USER_ID"
+    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 LINE_USER_ID
+    LINE_CHANNEL_ACCESS_TOKEN = os.environ.get(
+        "LINE_TOKEN"
+    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 LINE_TOKEN
+    TARGET_SEMESTER = "1142"  # <--- 填寫當前的學期
 
-    if not MOODLE_PASSWORD or not LINE_CHANNEL_ACCESS_TOKEN:
-        raise ValueError("環境變數未設定！請確認已在 GitHub Secrets 中設定 MOODLE_PASSWORD 與 LINE_TOKEN。")
+    if (
+        not MOODLE_USERNAME
+        or not MOODLE_PASSWORD
+        or not LINE_USER_ID
+        or not LINE_CHANNEL_ACCESS_TOKEN
+    ):
+        raise ValueError(
+            "環境變數未設定！請確認已在 GitHub Secrets 中設定 MOODLE_USERNAME, MOODLE_PASSWORD, LINE_USER_ID 與 LINE_TOKEN。"
+        )
 except Exception as e:
     print(f"❌ 讀取憑證失敗：{e}")
     exit()
@@ -85,7 +100,7 @@ def fetch_target_courses(session):
 
 
 def get_content_hash(text):
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def parse_moodle_date(date_str):
@@ -106,7 +121,7 @@ def parse_moodle_date(date_str):
 
 def fetch_inner_details(session, url, item_type):
     details = {"hash": "", "status": "", "due_date": "", "is_submitted": True}
-    if not url:
+    if not url or not url.startswith("https://moodle3.ntnu.edu.tw/"):
         return details
 
     try:
@@ -337,7 +352,7 @@ def main():
                                     msg = f"📝 [內容更新] {topic_name} - {item['type']}說明已被修改：{item['name']}"
                                     if item["type"] == "作業":
                                         if item.get("is_submitted", True):
-                                            msg += f"\n🚨 警告：您已繳交此作業，但教授剛才修改了作業要求！"
+                                            msg += "\n🚨 警告：您已繳交此作業，但教授剛才修改了作業要求！"
                                         else:
                                             msg += f"\n⚠️ 尚未繳交！截止：{item['due_date']}"
                                     msg += f"\n連結：{item['link']}"
@@ -355,35 +370,40 @@ def main():
 
     if not old_db["courses"] and current_courses_db:
         print("第一次執行，寫入基準資料庫。")
-        
+
         tracked_courses = []
         for course_name in courses_dict.values():
             short_name = course_name.replace(TARGET_SEMESTER, "").split("(")[0].strip()
             tracked_courses.append(short_name)
-        
+
         welcome_msg = "【NTNU Moodle 專用LINE通知器】啟動成功！\n"
         welcome_msg += "=" * 15 + "\n"
         welcome_msg += f"✅ 已成功連線，正在監控 {len(tracked_courses)} 門課程：\n"
-        
+
         for c_name in tracked_courses:
             welcome_msg += f"📖 {c_name}\n"
-            
+
         welcome_msg += "=" * 15 + "\n"
-        
+
         if urgent_list:
-            welcome_msg += "\n🚨 【注意！有即將到期的作業】\n" + "\n".join(urgent_list) + "\n"
-            
+            welcome_msg += (
+                "\n🚨 【注意！有即將到期的作業】\n" + "\n".join(urgent_list) + "\n"
+            )
+
         if pending_list:
             welcome_msg += "\n📋 【目前的待辦清單】\n" + "\n".join(pending_list)
         else:
             welcome_msg += "\n🎉 太棒了！目前無待辦作業，請繼續保持！"
-            
+
         print("準備發送 LINE 首次啟動通知！")
         if send_line_push_message(welcome_msg):
             print("LINE 首次啟動通知發送成功！")
         else:
-            stats["errors"].append(f"[{now.strftime('%H:%M')}] LINE 首次啟動通知發送失敗")
-        # ----------------------------------------    else:
+            stats["errors"].append(
+                f"[{now.strftime('%H:%M')}] LINE 首次啟動通知發送失敗"
+            )
+        # ----------------------------------------
+    else:
         send_alert = False
         alert_parts = []
 
