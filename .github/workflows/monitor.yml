@@ -31,7 +31,9 @@ jobs:
 
       - name: Run Moodle Monitor
         env:
+          MOODLE_USERNAME: ${{ secrets.MOODLE_USERNAME }}
           MOODLE_PASSWORD: ${{ secrets.MOODLE_PASSWORD }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
           TZ: Asia/Taipei 
         run: python main_monitor.py
