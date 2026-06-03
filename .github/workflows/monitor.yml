@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
+          pip install -r requirements.txt
 
       - name: Run Moodle Monitor
         env:
@@ -39,8 +39,9 @@ jobs:
           MOODLE_PASSWORD: ${{ secrets.MOODLE_PASSWORD }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TZ: Asia/Taipei 
-        run: python main_monitor.py
+        run: python main.py
 
       - name: Commit and Push changes
         uses: stefanzweifel/git-auto-commit-action@v7
