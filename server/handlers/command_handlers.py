@@ -1,5 +1,7 @@
+import os
 import requests
 import time
+import urllib.parse
 from datetime import datetime
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -59,17 +61,22 @@ def chunk_text(text: str, limit: int = 4900) -> List[str]:
         chunks.append("\n".join(current_chunk))
     return chunks
 
-def send_line_reply(reply_token: str, text: str, token: str):
-    """呼叫 LINE Reply API 回覆使用者"""
+def send_line_reply(reply_token: str, content: Any, token: str):
+    """呼叫 LINE Reply API 回覆使用者，支援純文字、Flex Message 字典，或預構建 messages 列表"""
     url = "https://api.line.me/v2/bot/message/reply"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
     
-    # 切塊（最多支援 5 則訊息）
-    chunks = chunk_text(text, 4900)[:5]
-    messages = [{"type": "text", "text": chunk} for chunk in chunks]
+    if isinstance(content, list):
+        messages = content[:5]
+    elif isinstance(content, dict):
+        messages = [content]
+    else:
+        # 純文字，依長度切塊，防超出 5000 字
+        chunks = chunk_text(str(content), 4900)[:5]
+        messages = [{"type": "text", "text": chunk} for chunk in chunks]
     
     payload = {
         "replyToken": reply_token,
@@ -83,18 +90,286 @@ def send_line_reply(reply_token: str, text: str, token: str):
     except Exception as e:
         print(f"[ERROR] LINE reply exception: {e}")
 
+def build_courses_flex(semester_courses: list, semester: str, dashboard_url: str) -> dict:
+    """構建監控課程的 Flex Message Bubble"""
+    contents = []
+    for c in semester_courses:
+        clean_name = clean_course_name(c["fullname"], semester)
+        contents.append({
+            "type": "box",
+            "layout": "horizontal",
+            "margin": "md",
+            "spacing": "sm",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "📖",
+                    "flex": 0,
+                    "size": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": clean_name,
+                    "wrap": True,
+                    "size": "sm",
+                    "weight": "bold",
+                    "color": "#e0e0e0"
+                }
+            ]
+        })
+        
+    bubble = {
+        "type": "bubble",
+        "styles": {
+            "header": {"backgroundColor": "#1e1e2e"},
+            "body": {"backgroundColor": "#242538"},
+            "footer": {"backgroundColor": "#1e1e2e"}
+        },
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": f"📚 本學期 ({semester}) 監控課程",
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#89b4fa"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": contents
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "color": "#89b4fa",
+                    "action": {
+                        "type": "uri",
+                        "label": "開啟 Web 控制台",
+                        "uri": dashboard_url
+                    }
+                }
+            ]
+        }
+    }
+    
+    return {
+        "type": "flex",
+        "altText": "📚 本學期監控課程",
+        "contents": bubble
+    }
+
+def build_assignments_flex(pending_assigns: list, semester: str, dashboard_url: str) -> dict:
+    """構建未繳作業的 Flex Message Carousel"""
+    bubbles = []
+    now = datetime.now()
+    
+    # 最多顯示 9 個作業，最後留 1 格給外連 Dashboard
+    for cname, assign in pending_assigns[:9]:
+        due_ts = assign.get("duedate", 0)
+        due_str = "無截止日期"
+        time_left = ""
+        time_color = "#a6e3a1"  # green
+        
+        if due_ts > 0:
+            due_dt = datetime.fromtimestamp(due_ts)
+            due_str = due_dt.strftime("%Y-%m-%d %H:%M")
+            if due_dt > now:
+                rem = due_dt - now
+                days = rem.days
+                hrs = rem.seconds // 3600
+                if days > 0:
+                    time_left = f" (剩 {days} 天 {hrs} 小時)"
+                    if days < 3:
+                        time_color = "#fab387"  # orange
+                else:
+                    mins = (rem.seconds % 3600) // 60
+                    time_left = f" (🚨 僅剩 {hrs} 小時 {mins} 分)"
+                    time_color = "#f38ba8"  # red
+            else:
+                time_left = " (⚠️ 已逾期)"
+                time_color = "#f38ba8"  # red
+
+        bubble = {
+            "type": "bubble",
+            "styles": {
+                "header": {"backgroundColor": "#1e1e2e"},
+                "body": {"backgroundColor": "#242538"},
+                "footer": {"backgroundColor": "#1e1e2e"}
+            },
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": cname,
+                        "weight": "bold",
+                        "size": "sm",
+                        "color": "#89b4fa",
+                        "wrap": True
+                    }
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": assign["name"],
+                        "weight": "bold",
+                        "size": "md",
+                        "color": "#ffffff",
+                        "wrap": True
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "xs",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"⏰ 截止：{due_str}",
+                                "size": "xs",
+                                "color": "#a6adc8"
+                            },
+                            {
+                                "type": "text",
+                                "text": time_left,
+                                "size": "xs",
+                                "color": time_color,
+                                "weight": "bold"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "color": "#89b4fa",
+                        "action": {
+                            "type": "postback",
+                            "label": "🔍 查詢繳交狀態",
+                            "data": f"action=check_submission&assign_id={assign['id']}"
+                        }
+                    }
+                ]
+            }
+        }
+        bubbles.append(bubble)
+        
+    # 加入外連 Web Dashboard 卡片
+    tail_bubble = {
+        "type": "bubble",
+        "styles": {
+            "body": {"backgroundColor": "#1e1e2e"}
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "gravity": "center",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "📊 還有更多作業資訊？",
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#ffffff",
+                    "align": "center"
+                },
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "color": "#89b4fa",
+                    "action": {
+                        "type": "uri",
+                        "label": "前往 Web 控制台",
+                        "uri": dashboard_url
+                    }
+                }
+            ]
+        }
+    }
+    bubbles.append(tail_bubble)
+    
+    return {
+        "type": "flex",
+        "altText": "📋 待繳作業清單",
+        "contents": {
+            "type": "carousel",
+            "contents": bubbles
+        }
+    }
+
 async def handle_command(text: str, reply_token: str, config: Config):
-    """解析並執行 LINE 指令"""
+    """解析並執行 LINE 指令與 Postback 事件"""
     cmd_parts = text.split(maxsplit=1)
     cmd = cmd_parts[0].lower()
     arg = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
+    # 0. 處理特殊的 /postback 事件
+    if cmd == "/postback":
+        params = urllib.parse.parse_qs(arg)
+        action = params.get("action", [None])[0]
+        if action == "check_submission":
+            assign_id = params.get("assign_id", [None])[0]
+            if assign_id:
+                try:
+                    client = get_moodle_client(config)
+                    status_data = client.get_submission_status(assign_id)
+                    last_attempt = status_data.get("lastattempt", {})
+                    submission = last_attempt.get("submission", {})
+                    status = submission.get("status", "new")
+                    
+                    status_map = {
+                        "submitted": "🟢 已繳交 (Submitted)",
+                        "draft": "🟡 草稿 (Draft - 未正式送出)",
+                        "new": "🔴 未繳交 (Not submitted)",
+                        "reopened": "🔄 已重新開放",
+                        "noattempt": "🔴 未繳交 (No attempt)"
+                    }
+                    status_str = status_map.get(status, f"未知狀態 ({status})")
+                    
+                    feedback = status_data.get("feedback", {})
+                    grade = feedback.get("gradeforstudent", "")
+                    grade_str = f"\n📊 成績：{grade}" if grade else ""
+                    
+                    reply_text = (
+                        f"🔍 作業狀態查詢結果：\n"
+                        f"--------------------\n"
+                        f"🆔 作業 ID: {assign_id}\n"
+                        f"📝 狀態: {status_str}{grade_str}\n"
+                    )
+                    send_line_reply(reply_token, reply_text, config.line_token)
+                except Exception as e:
+                    send_line_reply(reply_token, f"❌ 查詢作業繳交狀態失敗: {e}", config.line_token)
+            else:
+                send_line_reply(reply_token, "❌ 缺少 assign_id 參數", config.line_token)
+        return
 
     # 1. 幫助指令
     if cmd in ["/help", "/start", "/說明"]:
         reply_msg = (
             "🎓 NTNU Moodle 互動助理\n"
             "====================\n"
-            "您可以發送以下指令進行即時查詢：\n\n"
+            "您可以點選下方圖文選單，或直接發送以下指令：\n\n"
             "📚 /courses — 查看本學期監控課程\n"
             "📋 /assignments — 查看未繳作業 (可縮寫 /todo)\n"
             "📊 /grades — 查詢所有科目成績明細\n"
@@ -105,7 +380,7 @@ async def handle_command(text: str, reply_token: str, config: Config):
         send_line_reply(reply_token, reply_msg, config.line_token)
         return
 
-    # 需要調用 Moodle API 的指令，取得 Client 快取
+    # 需要 Moodle API 的指令，取得 Client 快取
     try:
         client = get_moodle_client(config)
     except Exception as e:
@@ -121,26 +396,24 @@ async def handle_command(text: str, reply_token: str, config: Config):
         send_line_reply(reply_token, f"❌ 取得課程清單失敗: {e}", config.line_token)
         return
 
-    # 2. 課程列表
+    dashboard_url = os.environ.get("DASHBOARD_URL", "https://moodle-notifier-c.onrender.com")
+
+    # 2. 課程列表 (Flex 卡片)
     if cmd == "/courses":
         if not semester_courses:
             send_line_reply(reply_token, f"📚 本學期 ({config.target_semester}) 沒有正在監控的課程。", config.line_token)
             return
             
-        lines = [f"📚 本學期 ({config.target_semester}) 監控課程：", "--------------------"]
-        for c in semester_courses:
-            clean_name = clean_course_name(c["fullname"], config.target_semester)
-            lines.append(f"📖 {clean_name} (ID: {c['id']})")
-        send_line_reply(reply_token, "\n".join(lines), config.line_token)
+        flex_msg = build_courses_flex(semester_courses, config.target_semester, dashboard_url)
+        send_line_reply(reply_token, flex_msg, config.line_token)
 
-    # 3. 待辦作業
+    # 3. 待辦作業 (Flex Carousel)
     elif cmd in ["/assignments", "/todo"]:
         if not course_ids:
             send_line_reply(reply_token, "📋 目前無監控課程，故無作業清單。", config.line_token)
             return
 
         try:
-            # 取得作業
             assigns_data = client.get_assignments(course_ids)
             api_courses = assigns_data.get("courses", [])
             
@@ -154,10 +427,7 @@ async def handle_command(text: str, reply_token: str, config: Config):
                 send_line_reply(reply_token, "🎉 太棒了！本學期目前沒有任何作業項目！", config.line_token)
                 return
 
-            # 並行查詢繳交狀態
-            pending_lines = []
-            now = datetime.now()
-
+            pending_assigns = []
             def check_assign_status(cname, assign):
                 try:
                     status_data = client.get_submission_status(assign["id"])
@@ -165,31 +435,8 @@ async def handle_command(text: str, reply_token: str, config: Config):
                     submission = last_attempt.get("submission", {})
                     status = submission.get("status", "new")
                     is_submitted = status in ["submitted", "draft"]
-                    
                     if not is_submitted:
-                        due_ts = assign.get("duedate", 0)
-                        due_str = "無截止日期"
-                        time_left = ""
-                        
-                        if due_ts > 0:
-                            due_dt = datetime.fromtimestamp(due_ts)
-                            due_str = due_dt.strftime("%Y-%m-%d %H:%M")
-                            if due_dt > now:
-                                rem = due_dt - now
-                                days = rem.days
-                                hrs = rem.seconds // 3600
-                                if days > 0:
-                                    time_left = f" (剩 {days} 天 {hrs} 小時)"
-                                else:
-                                    mins = (rem.seconds % 3600) // 60
-                                    time_left = f" (🚨 僅剩 {hrs} 小時 {mins} 分)"
-                            else:
-                                time_left = " (⚠️ 已逾期)"
-                                
-                        return (
-                            f"📝 [{cname}] {assign['name']}\n"
-                            f"⏰ 截止：{due_str}{time_left}\n"
-                        )
+                        return (cname, assign)
                 except Exception:
                     pass
                 return None
@@ -199,13 +446,15 @@ async def handle_command(text: str, reply_token: str, config: Config):
                 for future in as_completed(futures):
                     result = future.result()
                     if result:
-                        pending_lines.append(result)
+                        pending_assigns.append(result)
 
-            if pending_lines:
-                reply_text = "📋 目前未繳交的作業清單：\n" + "-" * 20 + "\n" + "\n".join(pending_lines)
+            if pending_assigns:
+                # 排序 (按截止日期從小到大)
+                pending_assigns.sort(key=lambda x: x[1].get("duedate", 9999999999))
+                flex_msg = build_assignments_flex(pending_assigns, config.target_semester, dashboard_url)
+                send_line_reply(reply_token, flex_msg, config.line_token)
             else:
-                reply_text = "🎉 檢查完畢！目前沒有任何待繳交作業！"
-            send_line_reply(reply_token, reply_text, config.line_token)
+                send_line_reply(reply_token, "🎉 檢查完畢！目前沒有任何待繳交作業！", config.line_token)
         except Exception as e:
             send_line_reply(reply_token, f"❌ 查詢作業狀態失敗: {e}", config.line_token)
 
@@ -216,8 +465,6 @@ async def handle_command(text: str, reply_token: str, config: Config):
             return
 
         lines = ["📊 本學期科目成績明細：", "===================="]
-        
-        # 循序獲取，但因只抓 1142 科目且用 API 依然極快
         for course in semester_courses:
             cname = clean_course_name(course["fullname"], config.target_semester)
             try:
@@ -250,7 +497,6 @@ async def handle_command(text: str, reply_token: str, config: Config):
             now_ts = time.time()
             for ev in events:
                 ts = ev.get("timesort", 0)
-                # 僅顯示 7 天內的事項
                 if ts - now_ts > 7 * 86400:
                     continue
                 dt = datetime.fromtimestamp(ts)

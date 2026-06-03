@@ -42,7 +42,11 @@ async def line_webhook(
     # 取得原始 Body 以進行簽章驗證
     body = await request.body()
     
-    # 1. 驗證簽章
+    # 1. 驗證憑證與簽章
+    if not config or not config.line_token or not config.line_channel_secret:
+        print("[WARNING] LINE webhook received but LINE Bot credentials are not fully configured.")
+        raise HTTPException(status_code=400, detail="LINE Bot is not fully configured")
+
     if not x_line_signature or not verify_signature(body, x_line_signature, config.line_channel_secret):
         print("[ERROR] Webhook signature verification failed!")
         raise HTTPException(status_code=403, detail="Invalid signature")
@@ -55,23 +59,34 @@ async def line_webhook(
 
     events = payload.get("events", [])
     for event in events:
-        # 僅處理文字訊息事件
-        if event.get("type") == "message" and event.get("message", {}).get("type") == "text":
-            user_id = event.get("source", {}).get("userId")
-            reply_token = event.get("replyToken")
+        user_id = event.get("source", {}).get("userId")
+        reply_token = event.get("replyToken")
+
+        # 3. 嚴格限定僅允許特定的 LINE_USER_ID 查詢
+        if user_id != config.line_user_id:
+            print(f"[WARNING] Unauthorized user query intercepted [UserId: {user_id}]")
+            # 回傳 200 避免 LINE Platform 判定 Webhook 故障
+            continue
+
+        event_type = event.get("type")
+
+        # 處理文字訊息事件
+        if event_type == "message" and event.get("message", {}).get("type") == "text":
             text = event.get("message", {}).get("text", "").strip()
-
-            # 3. 嚴格限定僅允許特定的 LINE_USER_ID 查詢
-            if user_id != config.line_user_id:
-                print(f"[WARNING] Unauthorized user query intercepted [UserId: {user_id}]")
-                # 回傳 200 避免 LINE Platform 判定 Webhook 故障
-                continue
-
             if reply_token and text.startswith("/"):
                 # 4. 調用指令處理器
                 try:
                     await handle_command(text, reply_token, config)
                 except Exception as e:
                     print(f"[ERROR] Exception processing command '{text}': {e}")
+
+        # 處理 Postback 事件
+        elif event_type == "postback":
+            data = event.get("postback", {}).get("data", "")
+            if reply_token and data:
+                try:
+                    await handle_command(f"/postback {data}", reply_token, config)
+                except Exception as e:
+                    print(f"[ERROR] Exception processing postback '{data}': {e}")
 
     return JSONResponse(status_code=200, content={"status": "ok"})

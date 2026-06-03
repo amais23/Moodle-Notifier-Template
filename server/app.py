@@ -1,13 +1,35 @@
 import os
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from server.routers import line_webhook, api_dashboard
+from src.config import Config
+from server.services.discord_bot import start_discord_bot, stop_discord_bot
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Load config and launch Discord bot if configured
+    print("[INFO] Server starting up. Initializing modules...")
+    try:
+        config = Config.load()
+        await start_discord_bot(config)
+    except Exception as e:
+        clean_error = str(e).encode('ascii', errors='ignore').decode('ascii')
+        print(f"[WARNING] Lifespan initialization warning: {clean_error}")
+        
+    yield
+    
+    # Shutdown: Clean up Discord bot connections
+    print("[INFO] Server shutting down. Cleaning up...")
+    await stop_discord_bot()
 
 app = FastAPI(
     title="Moodle Notifier Webhook Server",
     description="FastAPI server to handle LINE Webhooks and provide query endpoints.",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # 註冊 API 路由 (API 路由器必須優先註冊)

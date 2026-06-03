@@ -25,6 +25,7 @@ class Config:
         self.line_token = ""
         self.line_channel_secret = ""
         self.discord_webhook_url = ""
+        self.discord_bot_token = ""
 
     @classmethod
     def load(cls) -> 'Config':
@@ -62,9 +63,10 @@ class Config:
         config.line_token = os.environ.get("LINE_TOKEN", "")
         config.line_channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "")
         config.discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+        config.discord_bot_token = os.environ.get("DISCORD_BOT_TOKEN", "")
 
         # 檢查是否需要載入本機憑證檔
-        if not (config.username and config.password and config.line_user_id and config.line_token and config.line_channel_secret):
+        if not (config.username and config.password and config.line_user_id and config.line_token and config.line_channel_secret and config.discord_bot_token):
             config._load_local_files()
             
         # 檢查是否需要載入 JSON 憑證檔 (相容測試工具)
@@ -75,8 +77,8 @@ class Config:
         if not config.username or not config.password:
             raise ValueError("❌ 錯誤：未設定 Moodle 帳號或密碼！")
             
-        if not config.line_token and not config.discord_webhook_url:
-            raise ValueError("❌ 錯誤：必須至少設定 LINE_TOKEN 或 DISCORD_WEBHOOK_URL 其中一種通知管道！")
+        if not config.line_token and not config.discord_webhook_url and not config.discord_bot_token:
+            raise ValueError("❌ 錯誤：必須至少設定 LINE_TOKEN、DISCORD_WEBHOOK_URL 或 DISCORD_BOT_TOKEN 其中一種通知管道！")
 
         return config
 
@@ -144,6 +146,14 @@ class Config:
         if not self.discord_webhook_url:
             self.discord_webhook_url = self._read_txt_file("discord_webhook.txt")
 
+        # Discord Bot Token (加密或文字)
+        if not self.discord_bot_token:
+            bot_token_path = Path(self.data_dir) / "discord_bot_token.txt"
+            if bot_token_path.exists():
+                self.discord_bot_token = self._decrypt_secure_string(str(bot_token_path))
+                if not self.discord_bot_token:
+                    self.discord_bot_token = self._read_txt_file("discord_bot_token.txt")
+
     def _load_credentials_json(self):
         """從 moodle_credentials.json 載入憑證"""
         json_path = Path(self.data_dir) / "moodle_credentials.json"
@@ -163,5 +173,7 @@ class Config:
                     self.line_channel_secret = creds.get("line_channel_secret", "")
                 if not self.discord_webhook_url:
                     self.discord_webhook_url = creds.get("discord_webhook_url", "")
+                if not self.discord_bot_token:
+                    self.discord_bot_token = creds.get("discord_bot_token", "")
             except Exception:
                 pass
