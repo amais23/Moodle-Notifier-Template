@@ -13,8 +13,9 @@ router = APIRouter()
 try:
     config = Config.load()
 except Exception as e:
-    # 如果是在測試環境或尚未設定完整，暫時允許初始化，但記錄警告
-    print(f"⚠️ 伺服器啟動時 Config 載入警告: {e}")
+    # 避免 Windows CP950 編碼崩潰，先過濾非 ASCII 字元
+    clean_error = str(e).encode('ascii', errors='ignore').decode('ascii')
+    print(f"[WARNING] Config load warning during server startup: {clean_error}")
     config = None
 
 def verify_signature(body: bytes, signature: str, channel_secret: str) -> bool:

@@ -219,3 +219,9 @@ test_*.py
 list_all_apis.py
 api_list.json
 
+# Frontend build and dependencies
+frontend/node_modules/
+frontend/dist/
+server/dist/
+
+
