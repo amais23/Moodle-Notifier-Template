@@ -3,6 +3,7 @@ import json
 import requests
 import hashlib
 import re
+import subprocess
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
@@ -10,33 +11,50 @@ from datetime import datetime, timedelta
 # 1. 基礎設定區
 # ==========================================
 
+def decrypt_secure_string(file_path):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"找不到安全密碼檔：{file_path}")
+    command = f"$sec = Get-Content '{file_path}' | ConvertTo-SecureString; (New-Object System.Management.Automation.PSCredential('Dummy', $sec)).GetNetworkCredential().Password"
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"PowerShell 解密失敗: {e.stderr.strip()}")
+
 try:
-    MOODLE_USERNAME = os.environ.get(
-        "MOODLE_USERNAME"
-    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 MOODLE_USERNAME
-    MOODLE_PASSWORD = os.environ.get(
-        "MOODLE_PASSWORD"
-    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 MOODLE_PASSWORD
-    LINE_USER_ID = os.environ.get(
-        "LINE_USER_ID"
-    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 LINE_USER_ID
-    LINE_CHANNEL_ACCESS_TOKEN = os.environ.get(
-        "LINE_TOKEN"
-    )  # <--- 在 Setting > secrets and variables > Repository secrets 中設定 LINE_TOKEN
+    MOODLE_USERNAME = os.environ.get("MOODLE_USERNAME")
+    MOODLE_PASSWORD = os.environ.get("MOODLE_PASSWORD")
+    LINE_USER_ID = os.environ.get("LINE_USER_ID")
+    LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_TOKEN")
     TARGET_SEMESTER = "1142"  # <--- 填寫當前的學期
 
-    if (
-        not MOODLE_USERNAME
-        or not MOODLE_PASSWORD
-        or not LINE_USER_ID
-        or not LINE_CHANNEL_ACCESS_TOKEN
-    ):
+    # 若環境變數未設定，嘗試從本機安全密碼檔解密讀取（供本機開發/除錯使用）
+    if not (MOODLE_USERNAME and MOODLE_PASSWORD and LINE_USER_ID and LINE_CHANNEL_ACCESS_TOKEN):
+        print("ℹ️ 未偵測到環境變數，嘗試從本機安全檔案載入憑證...")
+        def read_local_file(file_path):
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            return None
+
+        MOODLE_USERNAME = read_local_file("moodle_user.txt")
+        MOODLE_PASSWORD = decrypt_secure_string("moodle_pass.txt")
+        LINE_USER_ID = read_local_file("line_user.txt")
+        LINE_CHANNEL_ACCESS_TOKEN = decrypt_secure_string("line_token.txt")
+
+    if not (MOODLE_USERNAME and MOODLE_PASSWORD and LINE_USER_ID and LINE_CHANNEL_ACCESS_TOKEN):
         raise ValueError(
-            "環境變數未設定！請確認已在 GitHub Secrets 中設定 MOODLE_USERNAME, MOODLE_PASSWORD, LINE_USER_ID 與 LINE_TOKEN。"
+            "環境變數未設定，且無法載入本機憑證！請確認已在 GitHub Secrets 中設定相關變數，或在本機備妥 moodle_user.txt、moodle_pass.txt、line_user.txt 與 line_token.txt。"
         )
 except Exception as e:
     print(f"❌ 讀取憑證失敗：{e}")
     exit()
+
 
 DATA_FILE = f"moodle_data_{TARGET_SEMESTER}.json"
 

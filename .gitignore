@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local credentials and data for Moodle Notifier
+moodle_user.txt
+moodle_pass.txt
+line_user.txt
+line_token.txt
+moodle_data_*.json
+
