@@ -437,7 +437,7 @@ def build_assignments_flex(pending_assigns: list, semester: str, dashboard_url: 
             "type": "box",
             "layout": "vertical",
             "spacing": "md",
-            "gravity": "center",
+            "justifyContent": "center",
             "contents": [
                 {
                     "type": "text",
@@ -579,7 +579,7 @@ def build_upcoming_flex(events: List[Dict[str, Any]], semester: str) -> dict:
             "body": {
                 "type": "box",
                 "layout": "vertical",
-                "gravity": "center",
+                "justifyContent": "center",
                 "contents": [
                     {
                         "type": "text",
@@ -713,7 +713,7 @@ def build_messages_flex(conversations: List[Dict[str, Any]], client_user_id: int
             "body": {
                 "type": "box",
                 "layout": "vertical",
-                "gravity": "center",
+                "justifyContent": "center",
                 "contents": [
                     {
                         "type": "text",
