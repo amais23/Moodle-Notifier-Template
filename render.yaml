@@ -3,7 +3,7 @@ services:
     name: moodle-notifier-server
     runtime: docker
     dockerContext: .
-    dockerFilePath: server/Dockerfile
+    dockerfilePath: server/Dockerfile
     plan: free
     envVars:
       - key: MOODLE_USERNAME
