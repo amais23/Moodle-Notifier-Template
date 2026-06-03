@@ -1,11 +1,21 @@
 import os
+import sys
 import json
 import requests
 import hashlib
 import re
 import subprocess
+import tempfile
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# 確保在 Windows 上輸出 UTF-8，避免 CP950 編碼錯誤 (如 Emoji)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 
 # ==========================================
 # 1. 基礎設定區
@@ -14,6 +24,8 @@ from datetime import datetime, timedelta
 def decrypt_secure_string(file_path):
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"找不到安全密碼檔：{file_path}")
+    if not re.match(r"^[\w\-./\\]+$", file_path):
+        raise ValueError(f"偵測到不安全的檔案路徑字元，拒絕解密：{file_path}")
     command = f"$sec = Get-Content '{file_path}' | ConvertTo-SecureString; (New-Object System.Management.Automation.PSCredential('Dummy', $sec)).GetNetworkCredential().Password"
     try:
         result = subprocess.run(
@@ -139,7 +151,7 @@ def parse_moodle_date(date_str):
         try:
             y, m, d, h, minute = map(int, match.groups())
             return datetime(y, m, d, h, minute)
-        except:
+        except (ValueError, TypeError, OverflowError):
             pass
     return None
 
@@ -210,6 +222,8 @@ def fetch_and_parse_course(session, course_id):
     soup = BeautifulSoup(res.text, "html.parser")
 
     course_data = []
+    tasks = []
+
     for sec in soup.select("li.section.main"):
         h3 = sec.select_one("h3.sectionname")
         if not h3:
@@ -239,21 +253,42 @@ def fetch_and_parse_course(session, course_id):
                 )
 
                 link = a_tag.get("href", "")
-                details = fetch_inner_details(session, link, item_type)
-
+                
                 items.append(
                     {
                         "name": item_name,
                         "link": link,
                         "type": item_type,
-                        "hash": details["hash"],
-                        "status": details["status"],
-                        "due_date": details["due_date"],
-                        "is_submitted": details["is_submitted"],
+                        "hash": "",
+                        "status": "",
+                        "due_date": "",
+                        "is_submitted": True,
                     }
                 )
+                tasks.append((len(course_data), len(items) - 1, link, item_type))
+
         course_data.append({"topic": topic_name, "items": items})
+
+    if tasks:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_task = {
+                executor.submit(fetch_inner_details, session, link, item_type): (topic_idx, item_idx)
+                for topic_idx, item_idx, link, item_type in tasks
+            }
+            for future in as_completed(future_to_task):
+                topic_idx, item_idx = future_to_task[future]
+                try:
+                    details = future.result()
+                    item = course_data[topic_idx]["items"][item_idx]
+                    item["hash"] = details["hash"]
+                    item["status"] = details["status"]
+                    item["due_date"] = details["due_date"]
+                    item["is_submitted"] = details["is_submitted"]
+                except Exception as e:
+                    print(f"並行解析詳細內容失敗: {e}")
+
     return course_data
+
 
 
 # ==========================================
@@ -281,7 +316,7 @@ def main():
                 loaded = json.load(f)
                 if "stats" in loaded:
                     old_db = loaded
-            except:
+            except Exception:
                 pass
 
     stats = old_db["stats"]
@@ -493,13 +528,25 @@ def main():
             stats["summary_sent"] = True
 
     if current_courses_db:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(
-                {"courses": current_courses_db, "stats": stats},
-                f,
-                indent=4,
-                ensure_ascii=False,
-            )
+        dir_name = os.path.dirname(os.path.abspath(DATA_FILE))
+        temp_name = None
+        try:
+            with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8", suffix=".json") as f:
+                temp_name = f.name
+                json.dump(
+                    {"courses": current_courses_db, "stats": stats},
+                    f,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+            os.replace(temp_name, DATA_FILE)
+        except Exception as e:
+            print(f"寫入資料庫失敗: {e}")
+            if temp_name and os.path.exists(temp_name):
+                try:
+                    os.remove(temp_name)
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

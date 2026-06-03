@@ -8,6 +8,10 @@ on:
       - cron: '0 10 * * *'         # 台灣 18:00    
     workflow_dispatch: 
 
+concurrency:
+  group: moodle-monitor
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
