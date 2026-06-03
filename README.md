@@ -1,90 +1,87 @@
-# NTNU Moodle 專用 LINE 通知器(模板)
+# 🎓 NTNU Moodle 專用 LINE 通知器(模板)
 
-這是一個部署在 GitHub Actions 上的自動化 Python 腳本，用來 24 小時監控師大 Moodle 的課程更新與作業，並利用自己專屬的的 LINE 官方帳號發送 LINE 通知給使用者。
-
-## 核心功能 (Core Features)
-
-- **監控檔案**：監控 [NTNU Moodle](https://moodle3.ntnu.edu.tw/) 作業說明與檔案，檔案或作業上傳 Moodle 時立刻通知，若教授修改檔案或修改作業說明也會通知。
-- **作業催繳**：作業期限前 24 小時，每次執行都會發送 LINE 通知。
-- **每日日報**：每天傍晚 18:00 準時發送本日運行狀況與待辦作業清單。
-- **高效能並行監控**：使用 Python 並行執行緒庫 (`ThreadPoolExecutor`)，以最大 5 個 worker 同時下載與解析細節資訊，將每次監控檢查的執行時間由原先約 4 分半大幅縮短至 **1 至 2 分鐘**，更省時且對學校伺服器友善。
-- **原子性資料庫寫入**：採用原子性寫入機制（寫入臨時檔案再用 `os.replace` 覆蓋原檔），以防程式突然中斷或 CI 逾時導致 Moodle 監控資料庫 (`moodle_data_*.json`) 損毀截斷。
-- **Windows Unicode 支援**：修正 Windows 預設 CP950 控制台下，因輸出 Emoji 表情符號（如 ❌, 🟢）而造成的 `UnicodeEncodeError` 崩潰問題。
-- **資料持久化**：自動將最新的 `moodle_data_1142.json` 更新回私人倉庫，保留歷史紀錄與比對基準。
+這是一個為國立臺灣師範大學 (NTNU) 學生量身打造的 **Moodle 替代平台控制中心**。
+您完全不需要開啟繁雜擁擠的師大 Moodle 網頁，透過 **LINE Bot 互動查詢與即時推播**，即可輕鬆掌握日常所有學習動態！
 
 ---
 
-## 使用方法 (Setup Guide)
+## ✨ 核心功能 (Features)
 
-請依照以下步驟完成雲端自動化部署：
+* **🔔 即時定時推播通知**
+  - **新上傳講義/公告**：教授一上傳新檔案、新消息或新作業，LINE 機器人會第一時間推播給您。若有修改檔案或作業說明亦會偵測通知。
+  - **死線催繳與提醒**：作業截止前 24 小時與 3 天自動發送提醒，防範漏繳作業。
+  - **每日傍晚日報**：每日 18:00 定時發送本日運行狀態與待繳作業清單。
 
-### 步驟 0：事前準備 (取得你專屬的LINE官方帳號)
+* **🤖 LINE Bot 隨身助理**
+  - 在 LINE 對話框發送簡單指令，即可即時查詢 Moodle 上的資訊：
+    - `/courses` — 查看本學期修習的監控課程。
+    - `/assignments` (或 `/todo`) — 查詢所有科目**未繳交的作業與截止倒數**。
+    - `/grades` — 查詢本學期所有學科的詳細成績與小考項目。
+    - `/upcoming` — 查詢一週內行事曆上的待辦活動或截止日。
+    - `/messages` — 查看最近的 Moodle 站內對話與未讀私訊。
+    - `/help` — 顯示指令使用說明。
+  - **個人隱私安全防禦**：機器人會嚴格校驗發送者的 LINE ID，只有您本人的 LINE 帳號才能查詢您的資料，其他人無法非法窺探。
 
-本專案使用 LINE Messaging API 來發送通知，請先至 [LINE Developers 控制台](https://developers.line.biz/console/) 完成以下準備：
-
-1. 先至 [LINE Developers 控制台](https://developers.line.biz/console/) 登入並建立一個 Provider，並且填入任意 Provider name，接著創建一個 **Messaging API** 頻道 (Create a **Messaging API** Channel)。接著建立一個 LINE 官方帳號(Create a LINE Official Account)，並且填入基本資料，不須申請認證帳號。
-2. 接著進入 [LINE 官方帳號管理](https://manager.line.biz/) 進入你創建的官方帳號主頁，點選右側設定，在設定頁面左側選擇列表中找到 Messaging API，點擊啟用Messaging API，並且選擇你的 Provider。
-3. 回到 [LINE Developers 控制台](https://developers.line.biz/console/) ，選擇你的 Messaging API 頻道。
-4. **取得 LINE_USER_ID**：切換到 `Basic settings` 頁籤，滑到最下方的 `Your user ID`，複製這串以 `U` 開頭的字串。
-5. **取得 LINE_TOKEN**：切換到 `Messaging API` 頁籤，滑到最下方的 `Channel access token (long-lived)`，點擊 **Issue** 產生 Token 並複製。
-> **💡 重要提醒**：請務必先在 `Messaging API` 頁籤掃描 QR Code，將你剛創建的機器人加為好友，它才有權限傳訊息給你！
-
-### 步驟 1：建立你自己的私有倉庫
-
-1. 註冊並登入 github
-2. 點擊本專案右上角的綠色按鈕 **「Use this template」** -> **「Create a new repository」**。
-3. 命名你的專案，並且 **⚠️ 務必將權限設定為 Private (私有)**，以保護你的密碼安全！
-4. 建立完成後，你的個人倉庫就會擁有這份程式碼。
-
-### 步驟 2：設定基本變數
-
-若有更動需求，請直接在你的倉庫中修改 `main_monitor.py` 程式碼最上方的「1. 基礎設定區」：
-
-- `TARGET_SEMESTER`：欲監控的學期代碼（例如 `"1142"`）。
-
-> **⚠️ 換學期提醒**：每學期初請務必更新 `TARGET_SEMESTER`，系統會自動建立全新的 JSON 基準檔，確保新舊學期資料不衝突。
-
-### 步驟 3：設定 GitHub Secrets (雲端金庫)
-
-進入你 GitHub 倉庫的 `Settings` -> 左側欄 `Secrets and variables` -> `Actions`，點擊綠色按鈕 **New repository secret**，新增以下四個變數：
-
-1. `MOODLE_USERNAME`：你的 Moodle 登入帳號（學號，例如 `41200000S`）。
-2. `MOODLE_PASSWORD`：你的 Moodle 登入密碼。
-3. `LINE_USER_ID`：接收推播的 LINE 目標 ID（步驟 0 取得的 `U` 開頭字串）。
-4. `LINE_TOKEN`：步驟 0 取得的 LINE Channel Access Token。
-
-### 步驟 4：啟動 GitHub Actions 排程
-
-1. 確認倉庫中已有 `.github/workflows/monitor.yml` 檔案。
-2. 前往 GitHub 上方的 **Actions** 頁籤。
-3. 點擊左側的 **Moodle Monitor Bot**，然後點擊右側的 **Run workflow** 進行第一次手動測試。若 LINE 成功收到啟動通知，即大功告成！
+* **💻 Premium 網頁儀表板**
+  - **課程與教材中心**：免找連結！直接在網頁中點選課程，即可展開各單元與下載上課講義 PDF。
+  - **成績明細**：下拉選單快速切換各科目，一覽所有評分項目與教授的回饋評語。
+  - **站內私訊聊天**：完美整合對話氣泡視圖，直接在控制台閱讀 Moodle 站內私訊。
+  - **安全檔案下載**：透過後端代理串流下載教材，雙重保障您的帳密安全。
 
 ---
 
-## 排程時間 (Cron Job)
+## 🚀 快速部署與使用方法
 
-自動執行設定檔位於 `.github/workflows/monitor.yml`。
-*(註：GitHub 伺服器使用的是 UTC 時間，台灣時間需 +8 小時)*
-
-若要修改執行頻率，請調整 `yml` 檔中 `on.schedule` 的 `cron` 參數：
-
-- **每 2 小時執行一次**: `cron: '0 */2 * * *'`
-- **每 6 小時執行一次**: `cron: '0 */6 * * *'`
-- **每天 07:58, 12:08, 16:18, 18:00, 20:58, 22:58 各執行一次 (預設)**:
-
-  ```yaml
-    schedule:
-      - cron: '58 12,14,23 * * *'  # 台灣 07:58, 20:58, 22:58
-      - cron: '8 4 * * *'          # 台灣 12:08
-      - cron: '18 8 * * *'         # 台灣 16:18
-      - cron: '0 10 * * *'         # 台灣 18:00
-  ```
+### 步驟 1：建立您專屬的 LINE 官方帳號機器人
+1. 登入 [LINE Developers 控制台](https://developers.line.biz/console/)，建立一個 Provider 並創建一個 **Messaging API** 頻道。
+2. 進入 [LINE 官方帳號管理後台](https://manager.line.biz/)，點選右上角設定 -> **Messaging API** -> 啟用，並綁定剛創立的 Provider。
+3. 在 LINE Developers 的 Messaging API 頻道中複製並留存以下 3 個金鑰：
+   - **`LINE_USER_ID`**：在 `Basic settings` 頁籤最下方的 `Your user ID`（以 `U` 開頭的一串字串）。
+   - **`LINE_TOKEN`**：在 `Messaging API` 頁籤最下方的 `Channel access token` (點 Issue 產生)。
+   - **`LINE_CHANNEL_SECRET`**：在 `Basic settings` 頁籤中的 `Channel secret`。
+   - **💡 記得**：掃描 Messaging API 頁籤中的 QR Code，將您的機器人加為 LINE 好友。
 
 ---
 
-## 免責聲明 (Disclaimer)
+### 步驟 2：建立您的私有 GitHub 倉庫
+1. 點擊此專案右上角的 **「Use this template」** -> **「Create a new repository」**。
+2. 命名您的專案，並 **⚠️ 務必設定為 Private (私有倉庫)**，以保障您的密碼與隱私安全！
+3. 建立後，前往 GitHub 倉庫的 `Settings` -> `Secrets and variables` -> `Actions`，新增以下四個 **Repository secrets**：
+   - `MOODLE_USERNAME`：您的 Portal 帳號（學號）。
+   - `MOODLE_PASSWORD`：您的 Portal 密碼。
+   - `LINE_USER_ID`：您的 LINE 用戶 ID (步驟 1 取得的 U 開頭字串)。
+   - `LINE_TOKEN`：您的 LINE Channel Access Token。
+4. 前往上方 **Actions** 頁籤，點選 **Moodle Monitor Bot** -> **Run workflow** 進行第一次測試。若 LINE 成功收到啟動通知，即表示 Actions 定時排程已部署成功！
 
-1. 僅供學術交流：本專案僅為自動化程式學習與交流之用途，非校方官方工具。
-2. 資安風險自負：本腳本需使用個人學號密碼，請務必確保於個人的 Private Repository 內執行，並妥善保管 GitHub Secrets。若因操作不當導致帳號安全問題，開發者概不負責。
-3. 合理使用：請遵守伺服器合理使用原則，預設排程為每日 6 次，請勿惡意修改為高頻率執行（如每分鐘執行一次），以免對學校 Moodle 伺服器造成負擔。
-4. 使用風險：若因 Moodle 系統改版導致腳本失效，或因執行此腳本引發任何衍生問題，請使用者自行承擔風險。
+> [!IMPORTANT]
+> ⚠️ **務必將設定為私有倉庫**，否則您的課程資訊會被公開！
+
+---
+
+### 步驟 3：部署 LINE Bot 互動與網頁控制台 (Render)
+本專案已配置好 Render Blueprint 一鍵部署，系統會自動在雲端完成網頁編譯與上線。
+
+1. 登入 [Render Dashboard](https://dashboard.render.com)。
+2. 點選 **New** -> **Blueprint**。
+3. 連接您建立的私有 `Moodle-Notifier` GitHub 倉庫，選擇 **`main`** 分支並點擊下一步。
+4. 在環境變數欄位中填入以下 5 個對應的金鑰值：
+   - `MOODLE_USERNAME` (校務行政系統帳號)
+   - `MOODLE_PASSWORD` (校務行政系統密碼)
+   - `LINE_USER_ID` (步驟 1 取得的 LINE 用戶 ID)
+   - `LINE_TOKEN` (步驟 1 取得的 LINE Access Token)
+   - `LINE_CHANNEL_SECRET` (步驟 1 取得的 LINE Channel Secret)
+5. 點擊 **Deploy** 開始建置。
+6. 建置成功後，您會獲得一個專屬的公網網址 (例如 `https://your-app-name.onrender.com`)：
+   - **綁定 LINE 指令**：將此網址加上 `/webhook/line` (例如 `https://your-app-name.onrender.com/webhook/line`)，填入 LINE Developers 中 `Messaging API` 頁籤的 **Webhook URL** 中，點擊驗證並開啟 **Use webhook**。現在您就可以在 LINE 中向機器人發送指令進行互動了！
+   - **進入網頁控制台**：直接在瀏覽器輸入您的公網網址 (例如 `https://your-app-name.onrender.com/`)，即可使用您的 Portal 帳密登入體驗高質感的儀表板！
+
+---
+
+## ⚙️ 進階調整
+- **更換學期**：每學期初，請在您的 GitHub 倉庫的 [src/config.py](file:///c:/Users/chiah/Documents/moodle%20notifier/src/config.py) 中，將 `TARGET_SEMESTER` 修改為新的學期代碼（例如本學期為 `"1142"`），或直接在 GitHub Secrets / Render 環境變數中設定 `TARGET_SEMESTER` 即可。
+
+## 🚨 免責聲明
+* **安全性與隱私**：本專案需要使用您的個人校務行政系統帳密以連接 Moodle API。請務必確保 GitHub 倉庫權限為 **Private (私有)**。開發者不會收集任何個人憑證資料，若因公開倉庫或其他不當使用導致的帳號資安風險，需請自行承擔。
+* **合理使用**：預設的 Actions 監控頻率為每日數次。請勿惡意修改排程為高頻率查詢（如每分鐘執行一次），以免對學校 Moodle 伺服器造成負載或引起封鎖。
+* **僅供學術交流**：本專案僅為自動化程式學習與交流之用途，非校方官方工具。
+* **使用風險**：若因 Moodle 系統改版導致腳本失效，或因執行此腳本引發任何衍生問題，請使用者自行承擔風險。

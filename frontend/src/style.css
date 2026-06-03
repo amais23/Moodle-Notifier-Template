@@ -8,7 +8,7 @@
   /* Harmonious Dark Palette */
   --bg-color: #0b0f19;
   --bg-grid: rgba(99, 102, 241, 0.03);
-  --glass-bg: rgba(17, 25, 40, 0.6);
+  --glass-bg: rgba(255, 255, 255, 0.045);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-highlight: rgba(255, 255, 255, 0.15);
   
@@ -69,7 +69,7 @@ body::before, body::after {
   border-radius: 50%;
   filter: blur(120px);
   z-index: -1;
-  opacity: 0.15;
+  opacity: 0.35;
   pointer-events: none;
 }
 
@@ -105,11 +105,11 @@ body::after {
 /* --- Common Components (Glassmorphism) --- */
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), inset 0 1px 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .glass-panel-interactive {

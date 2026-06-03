@@ -2,6 +2,73 @@
 // NTNU Moodle Notifier - Premium Web Dashboard Logic (Vanilla JS SPA)
 // ==========================================================================
 
+import './style.css';
+
+import { 
+  createIcons, 
+  LayoutDashboard, 
+  BookOpen, 
+  ClipboardList, 
+  Award, 
+  Calendar, 
+  MessageSquare, 
+  LogOut, 
+  ArrowRight, 
+  Clock, 
+  CheckCircle, 
+  FolderOpen, 
+  FileText, 
+  FileEdit, 
+  Presentation, 
+  FileSpreadsheet, 
+  Archive, 
+  Image, 
+  Video, 
+  Music, 
+  File, 
+  RefreshCw, 
+  X, 
+  AlertCircle, 
+  AlertTriangle,
+  Check,
+  Tag,
+  Folder
+} from 'lucide';
+
+function renderIcons() {
+  createIcons({
+    icons: {
+      LayoutDashboard, 
+      BookOpen, 
+      ClipboardList, 
+      Award, 
+      Calendar, 
+      MessageSquare, 
+      LogOut, 
+      ArrowRight, 
+      Clock, 
+      CheckCircle, 
+      FolderOpen, 
+      FileText, 
+      FileEdit, 
+      Presentation, 
+      FileSpreadsheet, 
+      Archive, 
+      Image, 
+      Video, 
+      Music, 
+      File, 
+      RefreshCw, 
+      X, 
+      AlertCircle, 
+      AlertTriangle,
+      Check,
+      Tag,
+      Folder
+    }
+  });
+}
+
 // Global state
 const state = {
   token: localStorage.getItem('moodle_token') || '',
@@ -459,7 +526,7 @@ async function renderDashboard() {
       }
     }
 
-    lucide.createIcons();
+    renderIcons();
   } catch (error) {
     console.error(error);
   }
@@ -494,7 +561,7 @@ async function renderCourses() {
           </div>
         `).join('');
       }
-      lucide.createIcons();
+      renderIcons();
     }
   } catch (error) {
     const container = document.getElementById('courses-container');
@@ -585,7 +652,7 @@ async function renderCourseDetails(courseId) {
         </div>
       `;
     }
-    lucide.createIcons();
+    renderIcons();
   } catch (error) {
     container.innerHTML = `<div class="glass-panel" style="padding: 24px; color: var(--color-danger);">載入課程明細失敗: ${error.message}</div>`;
   }
@@ -629,7 +696,7 @@ async function renderAssignments() {
           </div>
         `;
       }).join('');
-      lucide.createIcons();
+      renderIcons();
       
       // Auto-trigger loading submission status for the first 3 assignments to make it responsive
       const autoLoadCount = Math.min(assignments.length, 3);
@@ -651,7 +718,7 @@ async function loadSubmissionStatus(assignId) {
   
   try {
     statusEl.innerHTML = `<i data-lucide="refresh-cw" style="width:12px;height:12px;animation:spin 2s linear infinite;"></i> 查詢中...`;
-    lucide.createIcons();
+    renderIcons();
 
     const data = await fetchAPI(`/api/assignments/${assignId}/status`);
     // Parse response
@@ -685,7 +752,7 @@ async function loadSubmissionStatus(assignId) {
       statusEl.innerHTML += ` | 已評分: <span class="grade-val">${grade.grade}分</span>`;
     }
 
-    lucide.createIcons();
+    renderIcons();
   } catch (error) {
     statusEl.className = 'status-badge danger';
     statusEl.innerHTML = `查詢失敗`;
@@ -718,7 +785,7 @@ async function renderGrades() {
               <span>請從上方下拉選單選擇一門課程以查看成績</span>
             </div>
           `;
-          lucide.createIcons();
+          renderIcons();
           return;
         }
 
@@ -770,7 +837,7 @@ async function renderGrades() {
               </table>
             `;
           }
-          lucide.createIcons();
+          renderIcons();
         } catch (err) {
           tableContainer.innerHTML = `<div style="padding: 24px; color: var(--color-danger);">載入成績失敗: ${err.message}</div>`;
         }
@@ -815,7 +882,7 @@ async function renderUpcoming() {
           </div>
         `;
       }).join('');
-      lucide.createIcons();
+      renderIcons();
     }
   } catch (error) {
     container.innerHTML = `<div class="glass-panel" style="padding: 24px; color: var(--color-danger);">載入行事曆失敗: ${error.message}</div>`;
@@ -955,7 +1022,7 @@ async function router() {
   if (hash.startsWith('#courses/')) {
     const courseId = hash.split('/')[1];
     appEl.innerHTML = Views.courseDetails(courseId);
-    lucide.createIcons();
+    renderIcons();
     setupSidebarEvents();
     await renderCourseDetails(courseId);
     return;
@@ -1001,7 +1068,7 @@ async function router() {
       appEl.innerHTML = `<div style="padding: 40px; text-align:center;"><h2>404 - 找不到網頁</h2><a href="#dashboard">返回主頁</a></div>`;
   }
   
-  lucide.createIcons();
+  renderIcons();
 }
 
 // Event Listeners Setups
@@ -1023,14 +1090,14 @@ function setupLoginEvents() {
         // Show loading state
         submitBtn.disabled = true;
         submitBtn.innerHTML = `<i data-lucide="refresh-cw" style="animation: spin 2s linear infinite;"></i> 登入中...`;
-        lucide.createIcons();
+        renderIcons();
         errorContainer.innerHTML = '';
 
         await login(username, password, moodleUrl);
       } catch (err) {
         submitBtn.disabled = false;
         submitBtn.innerHTML = `安全登入 <i data-lucide="arrow-right"></i>`;
-        lucide.createIcons();
+        renderIcons();
         
         errorContainer.innerHTML = `
           <div class="login-error">
@@ -1038,7 +1105,7 @@ function setupLoginEvents() {
             <span>${err.message || '登入失敗，請檢查帳號密碼與網路連線。'}</span>
           </div>
         `;
-        lucide.createIcons();
+        renderIcons();
       }
     });
   }
