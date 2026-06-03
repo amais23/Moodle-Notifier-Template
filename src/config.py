@@ -23,6 +23,7 @@ class Config:
         self.password = ""
         self.line_user_id = ""
         self.line_token = ""
+        self.line_channel_secret = ""
         self.discord_webhook_url = ""
 
     @classmethod
@@ -59,10 +60,11 @@ class Config:
         config.password = os.environ.get("MOODLE_PASSWORD", "")
         config.line_user_id = os.environ.get("LINE_USER_ID", "")
         config.line_token = os.environ.get("LINE_TOKEN", "")
+        config.line_channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "")
         config.discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
         # 檢查是否需要載入本機憑證檔
-        if not (config.username and config.password and config.line_user_id and config.line_token):
+        if not (config.username and config.password and config.line_user_id and config.line_token and config.line_channel_secret):
             config._load_local_files()
             
         # 檢查是否需要載入 JSON 憑證檔 (相容測試工具)
@@ -130,6 +132,14 @@ class Config:
             if token_path.exists():
                 self.line_token = self._decrypt_secure_string(str(token_path))
 
+        # LINE Channel Secret (加密或文字)
+        if not self.line_channel_secret:
+            secret_path = Path(self.data_dir) / "line_secret.txt"
+            if secret_path.exists():
+                self.line_channel_secret = self._decrypt_secure_string(str(secret_path))
+                if not self.line_channel_secret:
+                    self.line_channel_secret = self._read_txt_file("line_secret.txt")
+
         # Discord Webhook URL
         if not self.discord_webhook_url:
             self.discord_webhook_url = self._read_txt_file("discord_webhook.txt")
@@ -149,6 +159,8 @@ class Config:
                     self.line_user_id = creds.get("line_user_id", "")
                 if not self.line_token:
                     self.line_token = creds.get("line_token", "")
+                if not self.line_channel_secret:
+                    self.line_channel_secret = creds.get("line_channel_secret", "")
                 if not self.discord_webhook_url:
                     self.discord_webhook_url = creds.get("discord_webhook_url", "")
             except Exception:

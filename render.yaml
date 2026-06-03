@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: moodle-notifier-server
+    runtime: docker
+    dockerContext: .
+    dockerFilePath: server/Dockerfile
+    plan: free
+    envVars:
+      - key: MOODLE_USERNAME
+        sync: false
+      - key: MOODLE_PASSWORD
+        sync: false
+      - key: LINE_USER_ID
+        sync: false
+      - key: LINE_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: TARGET_SEMESTER
+        value: "1142"
