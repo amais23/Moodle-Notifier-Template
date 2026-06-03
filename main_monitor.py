@@ -104,11 +104,16 @@ def get_content_hash(text):
 
 
 def parse_moodle_date(date_str):
-    """將 Moodle 的中文時間轉為 Python datetime 物件，以便計算倒數時間"""
+    """
+    將 Moodle 的中文/英文星期時間字串轉為 Python datetime 物件。
+    具有高度防禦性，相容 (五) 或 (Fri) 等星期表達。
+    """
     if not date_str:
         return None
+    # 支援: 年 月 日 (五/Fri) 時:分，允許括號內的星期為中文或英文，且空格為選填
     match = re.search(
-        r"(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日.*?\s+(\d{1,2}):(\d{2})", date_str
+        r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\([a-zA-Z\u4e00-\u9fa5]+\))?\s*(\d{1,2}):(\d{2})",
+        date_str
     )
     if match:
         try:
