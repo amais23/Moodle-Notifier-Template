@@ -114,7 +114,7 @@ def create_rich_menu():
             res = requests.get(card["icon_url"], timeout=10)
             if res.status_code == 200:
                 icon_img = Image.open(BytesIO(res.content)).convert("RGBA")
-                icon_img = icon_img.resize((160, 160), Image.Resampling.LANCZOS)
+                icon_img = icon_img.resize((250, 250), Image.Resampling.LANCZOS)
                 
                 # 手動為白色圖示著色 (Colorization)
                 r_ch, g_ch, b_ch, a_ch = icon_img.split()
@@ -123,7 +123,7 @@ def create_rich_menu():
                 
                 icon_w, icon_h = colored_icon.size
                 icon_x = center_x - icon_w // 2
-                icon_y = cy1 + 175
+                icon_y = cy1 + 120
                 overlay.paste(colored_icon, (icon_x, icon_y), colored_icon)
             else:
                 print(f"Failed to download icon for {card['title']}: status code {res.status_code}")
