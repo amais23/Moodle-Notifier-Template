@@ -1254,12 +1254,18 @@ def get_course_announcements(client: MoodleClient, course_id: int, filter_type: 
     else:
         return discussions[:5]
 
-async def handle_command(text: str, reply_token: str, config: Config):
+async def handle_command(text: str, reply_token: str, config: Config, base_url: str = None):
     """解析並執行 LINE 指令與 Postback 事件"""
     cmd_parts = text.split(maxsplit=1)
     cmd = cmd_parts[0].lower()
     arg = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
-    dashboard_url = os.environ.get("DASHBOARD_URL", "https://moodle-notifier-c.onrender.com")
+    
+    dashboard_url = config.dashboard_url
+    if not dashboard_url:
+        if base_url:
+            dashboard_url = base_url.rstrip("/")
+        else:
+            dashboard_url = "http://localhost:8000"
 
     # 0. 處理特殊的 /postback 事件
     if cmd == "/postback":

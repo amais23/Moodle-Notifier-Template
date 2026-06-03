@@ -26,6 +26,7 @@ class Config:
         self.line_channel_secret = ""
         self.discord_webhook_url = ""
         self.discord_bot_token = ""
+        self.dashboard_url = ""
 
     @classmethod
     def load(cls) -> 'Config':
@@ -35,6 +36,7 @@ class Config:
         config.target_semester = os.environ.get("TARGET_SEMESTER", config.target_semester)
         config.moodle_base_url = os.environ.get("MOODLE_BASE_URL", config.moodle_base_url)
         config.data_dir = os.environ.get("DATA_DIR", config.data_dir)
+        config.dashboard_url = os.environ.get("DASHBOARD_URL", "").rstrip("/")
         
         try:
             config.max_workers = int(os.environ.get("MAX_WORKERS", config.max_workers))
@@ -154,6 +156,10 @@ class Config:
                 if not self.discord_bot_token:
                     self.discord_bot_token = self._read_txt_file("discord_bot_token.txt")
 
+        # 載入控制台網址
+        if not self.dashboard_url:
+            self.dashboard_url = self._read_txt_file("dashboard_url.txt").rstrip("/")
+
     def _load_credentials_json(self):
         """從 moodle_credentials.json 載入憑證"""
         json_path = Path(self.data_dir) / "moodle_credentials.json"
@@ -175,5 +181,7 @@ class Config:
                     self.discord_webhook_url = creds.get("discord_webhook_url", "")
                 if not self.discord_bot_token:
                     self.discord_bot_token = creds.get("discord_bot_token", "")
+                if not self.dashboard_url:
+                    self.dashboard_url = creds.get("dashboard_url", "").rstrip("/")
             except Exception:
                 pass

@@ -76,7 +76,7 @@ async def line_webhook(
             if reply_token and text.startswith("/"):
                 # 4. 調用指令處理器
                 try:
-                    await handle_command(text, reply_token, config)
+                    await handle_command(text, reply_token, config, base_url=str(request.base_url))
                 except Exception as e:
                     print(f"[ERROR] Exception processing command '{text}': {e}")
                     try:
@@ -90,7 +90,7 @@ async def line_webhook(
             data = event.get("postback", {}).get("data", "")
             if reply_token and data:
                 try:
-                    await handle_command(f"/postback {data}", reply_token, config)
+                    await handle_command(f"/postback {data}", reply_token, config, base_url=str(request.base_url))
                 except Exception as e:
                     print(f"[ERROR] Exception processing postback '{data}': {e}")
                     try:

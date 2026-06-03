@@ -59,7 +59,7 @@ def init_bot(config: Config):
         embed.add_field(name="❓ /help", value="顯示此說明", inline=False)
         
         # Add dashboard URL button if configured
-        dashboard_url = os.environ.get("DASHBOARD_URL", "https://moodle-notifier-c.onrender.com")
+        dashboard_url = config.dashboard_url or "http://localhost:8000"
         view = discord.ui.View()
         view.add_item(discord.ui.Button(label="開啟 Web 控制台", url=dashboard_url, style=discord.ButtonStyle.link))
         
@@ -94,7 +94,7 @@ def init_bot(config: Config):
             clean_name = get_clean_name(c["fullname"])
             embed.add_field(name=clean_name, value=f"ID: `{c['id']}`", inline=False)
 
-        dashboard_url = os.environ.get("DASHBOARD_URL", "https://moodle-notifier-c.onrender.com")
+        dashboard_url = config.dashboard_url or "http://localhost:8000"
         view = discord.ui.View()
         view.add_item(discord.ui.Button(label="開啟 Web 控制台", url=dashboard_url, style=discord.ButtonStyle.link))
         await interaction.followup.send(embed=embed, view=view)
@@ -197,7 +197,7 @@ def init_bot(config: Config):
                     inline=False
                 )
 
-            dashboard_url = os.environ.get("DASHBOARD_URL", "https://moodle-notifier-c.onrender.com")
+            dashboard_url = config.dashboard_url or "http://localhost:8000"
             view = discord.ui.View()
             view.add_item(discord.ui.Button(label="開啟 Web 控制台", url=dashboard_url, style=discord.ButtonStyle.link))
             await interaction.followup.send(embed=embed, view=view)
@@ -470,7 +470,7 @@ def init_bot(config: Config):
                 embed.description = "📭 目前無講義或教材檔案"
                 await interaction.followup.send(embed=embed)
             else:
-                dashboard_url = os.environ.get("DASHBOARD_URL", "https://moodle-notifier-c.onrender.com")
+                dashboard_url = config.dashboard_url or "http://localhost:8000"
                 token = client.token
                 
                 lines = []

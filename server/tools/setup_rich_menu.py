@@ -138,7 +138,13 @@ def setup_rich_menu(dashboard_url: str):
         print(f"Exception setting default rich menu: {e}")
 
 if __name__ == "__main__":
-    url = "https://moodle-notifier-c.onrender.com"
+    try:
+        config = Config.load()
+        default_url = config.dashboard_url or "http://localhost:8000"
+    except Exception:
+        default_url = "http://localhost:8000"
+        
+    url = default_url
     for arg in sys.argv:
         if arg.startswith("--url="):
             url = arg.split("=", 1)[1]
