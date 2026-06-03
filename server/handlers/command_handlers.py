@@ -308,9 +308,9 @@ def build_courses_flex(semester_courses: list, semester: str, dashboard_url: str
                     "style": "primary",
                     "color": "#89b4fa",
                     "action": {
-                        "type": "uri",
-                        "label": "開啟 Web 控制台",
-                        "uri": dashboard_url
+                        "type": "postback",
+                        "label": "✨ 顯示最近消息 (7天內)",
+                        "data": "action=recent_news"
                     }
                 }
             ]
@@ -1132,7 +1132,7 @@ def build_files_list_flex(files: List[Dict[str, Any]], course_name: str, token: 
             "style": "italic"
         })
     else:
-        for f in files[:8]:  # 限制最多 8 個檔案以防長度超出
+        for f in files[:15]:  # 限制最多 15 個檔案以防長度超出，分主題展示後較不易超出
             fname = f["name"]
             furl = f["url"]
             fsize = f["size"]
@@ -1254,6 +1254,384 @@ def get_course_announcements(client: MoodleClient, course_id: int, filter_type: 
     else:
         return discussions[:5]
 
+def extract_course_sections_with_files(contents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """從課程內容中提取含有檔案的主題 (Section) 列表"""
+    valid_sections = []
+    for section in contents:
+        modules = section.get("modules", [])
+        if not modules:
+            continue
+        
+        file_count = 0
+        for m in modules:
+            if m.get("modname") in ["resource", "folder"]:
+                files_in_mod = sum(1 for f in m.get("contents", []) if f.get("type") == "file")
+                file_count += files_in_mod
+                
+        if file_count > 0:
+            valid_sections.append({
+                "id": section.get("id"),
+                "name": section.get("name", "未命名主題"),
+                "file_count": file_count
+            })
+    return valid_sections
+
+def build_course_sections_flex(sections: list, course_id: int, course_name: str) -> dict:
+    """構建課程講義主題 (Sections) 選擇列表的 Flex Card"""
+    contents = []
+    for s in sections[:15]:
+        sname = s["name"]
+        sid = s["id"]
+        fcount = s["file_count"]
+        
+        contents.append({
+            "type": "button",
+            "style": "secondary",
+            "color": "#313244",
+            "margin": "sm",
+            "action": {
+                "type": "postback",
+                "label": f"📂 {sname} ({fcount} 個檔案)",
+                "data": f"action=course_section_files&course_id={course_id}&course_name={urllib.parse.quote(course_name)}&section_id={sid}"
+            }
+        })
+        
+    bubble = {
+        "type": "bubble",
+        "styles": {
+            "header": {"backgroundColor": "#1e1e2e"},
+            "body": {"backgroundColor": "#242538"}
+        },
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": f"📁 {course_name} - 選擇講義主題",
+                    "weight": "bold",
+                    "size": "sm",
+                    "color": "#89b4fa",
+                    "wrap": True
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "xs",
+            "contents": contents
+        }
+    }
+    return {
+        "type": "flex",
+        "altText": f"📁 {course_name} 講義主題選單",
+        "contents": bubble
+    }
+
+def build_recent_news_flex(news_data: dict, semester: str) -> dict:
+    """構建最近消息 (7天內) 的 Flex Card"""
+    contents = []
+    
+    announcements = news_data.get("announcements", [])
+    files = news_data.get("files", [])
+    assignments = news_data.get("assignments", [])
+    
+    has_data = len(announcements) > 0 or len(files) > 0 or len(assignments) > 0
+    
+    if not has_data:
+        bubble = {
+            "type": "bubble",
+            "styles": {
+                "body": {"backgroundColor": "#242538"}
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "justifyContent": "center",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "📭 最近 7 天內無任何最新消息",
+                        "color": "#a6adc8",
+                        "align": "center",
+                        "weight": "bold"
+                    }
+                ]
+            }
+        }
+        return {
+            "type": "flex",
+            "altText": "✨ 最近消息 (7天內)",
+            "contents": bubble
+        }
+        
+    if announcements:
+        contents.append({
+            "type": "text",
+            "text": "📢 最新公告 (7天內)",
+            "weight": "bold",
+            "size": "sm",
+            "color": "#89b4fa",
+            "margin": "md"
+        })
+        contents.append({"type": "separator", "color": "#89b4fa", "margin": "xs"})
+        for a in announcements[:5]:
+            cname = a["course_name"]
+            title = a["title"]
+            created = a["created"]
+            contents.append({
+                "type": "box",
+                "layout": "vertical",
+                "margin": "sm",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"[{cname}] {title}",
+                        "weight": "bold",
+                        "size": "xs",
+                        "color": "#ffffff",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"⏰ 發布：{created}",
+                        "size": "xxs",
+                        "color": "#a6adc8"
+                    }
+                ]
+            })
+            
+    if files:
+        contents.append({
+            "type": "text",
+            "text": "📁 新增講義 (7天內)",
+            "weight": "bold",
+            "size": "sm",
+            "color": "#a6e3a1",
+            "margin": "lg"
+        })
+        contents.append({"type": "separator", "color": "#a6e3a1", "margin": "xs"})
+        for f in files[:5]:
+            cname = f["course_name"]
+            fname = f["name"]
+            created = f["created"]
+            contents.append({
+                "type": "box",
+                "layout": "vertical",
+                "margin": "sm",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"[{cname}] {fname}",
+                        "weight": "bold",
+                        "size": "xs",
+                        "color": "#ffffff",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"⏰ 上傳：{created}",
+                        "size": "xxs",
+                        "color": "#a6adc8"
+                    }
+                ]
+            })
+            
+    if assignments:
+        contents.append({
+            "type": "text",
+            "text": "⏰ 即將截止作業 (7天內)",
+            "weight": "bold",
+            "size": "sm",
+            "color": "#f38ba8",
+            "margin": "lg"
+        })
+        contents.append({"type": "separator", "color": "#f38ba8", "margin": "xs"})
+        for a in assignments[:5]:
+            cname = a["course_name"]
+            title = a["title"]
+            due_str = a["duedate"]
+            time_left = a["time_left"]
+            contents.append({
+                "type": "box",
+                "layout": "vertical",
+                "margin": "sm",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"[{cname}] {title}",
+                        "weight": "bold",
+                        "size": "xs",
+                        "color": "#ffffff",
+                        "wrap": True
+                    },
+                    {
+                        "type": "text",
+                        "text": f"截止：{due_str}{time_left}",
+                        "size": "xxs",
+                        "color": "#fab387"
+                    }
+                ]
+            })
+            
+    bubble = {
+        "type": "bubble",
+        "styles": {
+            "header": {"backgroundColor": "#1e1e2e"},
+            "body": {"backgroundColor": "#242538"}
+        },
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": f"✨ 課程最近消息 ({semester})",
+                    "weight": "bold",
+                    "size": "sm",
+                    "color": "#b4befe"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": contents
+        }
+    }
+    return {
+        "type": "flex",
+        "altText": "✨ 課程最近消息 (7天內)",
+        "contents": bubble
+    }
+
+async def handle_recent_news(client, config: Config, dashboard_url: str) -> dict:
+    """並行抓取 7 天內所有課程的公告、教材、與即將截止之未繳作業"""
+    now_ts = time.time()
+    now_dt = datetime.now()
+    
+    courses_data = client.get_user_courses()
+    semester_courses = [c for c in courses_data if config.target_semester in c.get("fullname", "")]
+    course_ids = [c["id"] for c in semester_courses]
+    
+    if not course_ids:
+        return {"announcements": [], "files": [], "assignments": []}
+        
+    recent_announcements = []
+    recent_files = []
+    recent_assignments = []
+    
+    course_id_to_name = {}
+    for c in semester_courses:
+        course_id_to_name[c["id"]] = clean_course_name(c["fullname"], config.target_semester)
+
+    def fetch_course_updates(course_id):
+        cname = course_id_to_name.get(course_id, "課程")
+        anns = []
+        fls = []
+        try:
+            discs = get_course_announcements(client, course_id, "7days")
+            for d in discs:
+                anns.append({
+                    "course_name": cname,
+                    "title": d.get("subject", "無標題"),
+                    "created": datetime.fromtimestamp(d.get("created", 0)).strftime("%m/%d %H:%M")
+                })
+        except Exception:
+            pass
+            
+        try:
+            contents = client.get_course_contents(course_id)
+            for section in contents:
+                for m in section.get("modules", []):
+                    if m.get("modname") in ["resource", "folder"]:
+                        for f in m.get("contents", []):
+                            if f.get("type") == "file":
+                                tmod = f.get("timemodified", 0)
+                                if now_ts - tmod <= 7 * 86400:
+                                    fls.append({
+                                        "course_name": cname,
+                                        "name": m.get("name", f.get("filename")),
+                                        "created": datetime.fromtimestamp(tmod).strftime("%m/%d %H:%M")
+                                    })
+        except Exception:
+            pass
+        return anns, fls
+
+    with ThreadPoolExecutor(max_workers=min(len(course_ids), 10)) as executor:
+        futures = {executor.submit(fetch_course_updates, cid): cid for cid in course_ids}
+        for future in as_completed(futures):
+            anns, fls = future.result()
+            recent_announcements.extend(anns)
+            recent_files.extend(fls)
+
+    try:
+        assigns_data = client.get_assignments(course_ids)
+        api_courses = assigns_data.get("courses", [])
+        
+        raw_assigns = []
+        for ac in api_courses:
+            cid = ac.get("id")
+            cname = course_id_to_name.get(cid, "課程")
+            for a in ac.get("assignments", []):
+                due_ts = a.get("duedate", 0)
+                if due_ts > 0 and (due_ts - now_ts <= 7 * 86400):
+                    raw_assigns.append((cname, a))
+                    
+        def check_assign_status_for_news(cname, assign):
+            try:
+                status_data = client.get_submission_status(assign["id"])
+                last_attempt = status_data.get("lastattempt", {})
+                submission = last_attempt.get("submission", {})
+                status = submission.get("status", "new")
+                is_submitted = status in ["submitted", "draft"]
+                if not is_submitted:
+                    due_ts = assign["duedate"]
+                    due_str = datetime.fromtimestamp(due_ts).strftime("%m/%d %H:%M")
+                    
+                    if due_ts > now_ts:
+                        rem = datetime.fromtimestamp(due_ts) - now_dt
+                        days = rem.days
+                        hrs = rem.seconds // 3600
+                        if days > 0:
+                            time_left = f" (剩 {days} 天 {hrs} 小時)"
+                        else:
+                            mins = (rem.seconds % 3600) // 60
+                            time_left = f" (🚨 僅剩 {hrs} 小時 {mins} 分)"
+                    else:
+                        time_left = " (⚠️ 已逾期)"
+                        
+                    return {
+                        "course_name": cname,
+                        "title": assign["name"],
+                        "duedate": due_str,
+                        "time_left": time_left,
+                        "ts": due_ts
+                    }
+            except Exception:
+                pass
+            return None
+
+        if raw_assigns:
+            with ThreadPoolExecutor(max_workers=min(len(raw_assigns), 10)) as executor:
+                futures = [executor.submit(check_assign_status_for_news, cn, a) for cn, a in raw_assigns]
+                for future in as_completed(futures):
+                    res = future.result()
+                    if res:
+                        recent_assignments.append(res)
+                        
+            recent_assignments.sort(key=lambda x: x["ts"])
+    except Exception:
+        pass
+        
+    return {
+        "announcements": recent_announcements,
+        "files": recent_files,
+        "assignments": recent_assignments
+    }
+
 async def handle_command(text: str, reply_token: str, config: Config, base_url: str = None):
     """解析並執行 LINE 指令與 Postback 事件"""
     cmd_parts = text.split(maxsplit=1)
@@ -1336,13 +1714,64 @@ async def handle_command(text: str, reply_token: str, config: Config, base_url: 
                 try:
                     client = get_moodle_client(config)
                     contents = client.get_course_contents(int(course_id))
-                    files = extract_course_files(contents)
-                    flex_msg = build_files_list_flex(files, course_name, client.token, dashboard_url)
+                    sections = extract_course_sections_with_files(contents)
+                    
+                    if not sections:
+                        send_line_reply(reply_token, build_error_flex(f"{course_name} 講義", "📭 本課程目前沒有任何講義或教材檔案。"), config.line_token)
+                        return
+                        
+                    flex_msg = build_course_sections_flex(sections, int(course_id), course_name)
                     send_line_reply(reply_token, flex_msg, config.line_token)
                 except Exception as e:
-                    send_line_reply(reply_token, build_error_flex("講義讀取失敗", str(e)), config.line_token)
+                    send_line_reply(reply_token, build_error_flex("講義主題讀取失敗", str(e)), config.line_token)
             else:
                 send_line_reply(reply_token, build_error_flex("錯誤", "缺少課程 ID 或課程名稱"), config.line_token)
+                
+        elif action == "course_section_files":
+            course_id = params.get("course_id", [None])[0]
+            course_name = params.get("course_name", [None])[0]
+            section_id = params.get("section_id", [None])[0]
+            if course_id and course_name and section_id:
+                course_name = urllib.parse.unquote(course_name)
+                try:
+                    client = get_moodle_client(config)
+                    contents = client.get_course_contents(int(course_id))
+                    
+                    files = []
+                    target_section_name = "講義"
+                    for section in contents:
+                        if str(section.get("id")) == str(section_id):
+                            target_section_name = section.get("name", "講義")
+                            for m in section.get("modules", []):
+                                if m.get("modname") in ["resource", "folder"]:
+                                    for f in m.get("contents", []):
+                                        if f.get("type") == "file":
+                                            files.append({
+                                                "name": m.get("name", f.get("filename")),
+                                                "url": f.get("fileurl"),
+                                                "size": f.get("filesize", 0)
+                                            })
+                            break
+                            
+                    if not files:
+                        send_line_reply(reply_token, build_error_flex(f"{target_section_name}", "📭 此主題下目前無可下載的教材檔案。"), config.line_token)
+                        return
+                        
+                    flex_msg = build_files_list_flex(files[:15], f"{course_name} - {target_section_name}", client.token, dashboard_url)
+                    send_line_reply(reply_token, flex_msg, config.line_token)
+                except Exception as e:
+                    send_line_reply(reply_token, build_error_flex("教材檔案讀取失敗", str(e)), config.line_token)
+            else:
+                send_line_reply(reply_token, build_error_flex("錯誤", "缺少課程 ID、課程名稱或主題 ID"), config.line_token)
+                
+        elif action == "recent_news":
+            try:
+                client = get_moodle_client(config)
+                news_data = await handle_recent_news(client, config, dashboard_url)
+                flex_msg = build_recent_news_flex(news_data, config.target_semester)
+                send_line_reply(reply_token, flex_msg, config.line_token)
+            except Exception as e:
+                send_line_reply(reply_token, build_error_flex("取得最近消息失敗", str(e)), config.line_token)
         return
 
     # 1. 幫助指令
@@ -1453,6 +1882,13 @@ async def handle_command(text: str, reply_token: str, config: Config, base_url: 
             futures = [executor.submit(fetch_course_grades, c) for c in semester_courses]
             for future in as_completed(futures):
                 courses_grades.append(future.result())
+
+        # 過濾沒有任何成績紀錄的課程 (grades 列表為空)
+        courses_grades = [cg for cg in courses_grades if len(cg["grades"]) > 0]
+
+        if not courses_grades:
+            send_line_reply(reply_token, build_error_flex("成績查詢", "📊 目前監控課程中，所有科目皆沒有任何成績紀錄。"), config.line_token)
+            return
 
         courses_grades.sort(key=lambda x: x["course_name"])
         flex_msg = build_grades_flex(courses_grades, config.target_semester)
