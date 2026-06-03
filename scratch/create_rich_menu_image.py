@@ -29,36 +29,42 @@ def create_rich_menu():
     pad_y = 45
     corner_radius = 45
     
-    # 6 個卡片的內容，使用 Iconify API 獲取對應顏色的 Lucide 圖案透明 PNG
+    # 6 個卡片的內容，使用 icons8 透明白色 PNG，並在程式中手動上色以維持質感
     cards = [
         {
             "title": "監控課程", 
-            "icon_url": "https://api.iconify.design/lucide:book-open.png?color=%2389b4fa&width=200&height=200",
+            "icon_url": "https://img.icons8.com/ios-filled/200/ffffff/open-book.png",
+            "color": (137, 180, 250), # 淡藍 #89b4fa
             "col": 0, "row": 0
         },
         {
             "title": "待繳作業", 
-            "icon_url": "https://api.iconify.design/lucide:clipboard-list.png?color=%23f38ba8&width=200&height=200",
+            "icon_url": "https://img.icons8.com/ios-filled/200/ffffff/clipboard.png",
+            "color": (243, 139, 168), # 粉紅 #f38ba8
             "col": 1, "row": 0
         },
         {
             "title": "成績查詢", 
-            "icon_url": "https://api.iconify.design/lucide:bar-chart-3.png?color=%23a6e3a1&width=200&height=200",
+            "icon_url": "https://img.icons8.com/ios-filled/200/ffffff/bar-chart.png",
+            "color": (166, 227, 161), # 淡綠 #a6e3a1
             "col": 2, "row": 0
         },
         {
             "title": "近期活動", 
-            "icon_url": "https://api.iconify.design/lucide:calendar.png?color=%23f9e2af&width=200&height=200",
+            "icon_url": "https://img.icons8.com/ios-filled/200/ffffff/calendar.png",
+            "color": (249, 226, 175), # 淡黃 #f9e2af
             "col": 0, "row": 1
         },
         {
             "title": "最新私訊", 
-            "icon_url": "https://api.iconify.design/lucide:message-square.png?color=%23cba6f7&width=200&height=200",
+            "icon_url": "https://img.icons8.com/ios-filled/200/ffffff/speech-bubble.png",
+            "color": (203, 166, 247), # 淡紫 #cba6f7
             "col": 1, "row": 1
         },
         {
             "title": "控制台網頁", 
-            "icon_url": "https://api.iconify.design/lucide:layout-dashboard.png?color=%2389dceb&width=200&height=200",
+            "icon_url": "https://img.icons8.com/ios-filled/200/ffffff/settings.png",
+            "color": (137, 220, 235), # 淡青 #89dceb
             "col": 2, "row": 1
         }
     ]
@@ -102,18 +108,27 @@ def create_rich_menu():
         # 卡片中心點
         center_x = (cx1 + cx2) // 2
         
-        # 下載並黏貼 Icon
+        # 下載並黏貼 Icon (著色並 resize)
         try:
             print(f"Downloading icon for {card['title']}...")
             res = requests.get(card["icon_url"], timeout=10)
             if res.status_code == 200:
                 icon_img = Image.open(BytesIO(res.content)).convert("RGBA")
-                icon_w, icon_h = icon_img.size
+                icon_img = icon_img.resize((160, 160), Image.Resampling.LANCZOS)
+                
+                # 手動為白色圖示著色 (Colorization)
+                r_ch, g_ch, b_ch, a_ch = icon_img.split()
+                color_img = Image.new("RGBA", icon_img.size, card["color"] + (255,))
+                colored_icon = Image.composite(color_img, Image.new("RGBA", icon_img.size, (0, 0, 0, 0)), a_ch)
+                
+                icon_w, icon_h = colored_icon.size
                 icon_x = center_x - icon_w // 2
-                icon_y = cy1 + 170
-                overlay.paste(icon_img, (icon_x, icon_y), icon_img)
+                icon_y = cy1 + 175
+                overlay.paste(colored_icon, (icon_x, icon_y), colored_icon)
+            else:
+                print(f"Failed to download icon for {card['title']}: status code {res.status_code}")
         except Exception as e:
-            print(f"Failed to fetch icon for {card['title']}: {e}")
+            print(f"Failed to fetch/process icon for {card['title']}: {e}")
             
         # 繪製繁體中文文字 (置中，卡片下半部)
         text = card["title"]
