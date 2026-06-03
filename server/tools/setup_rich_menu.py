@@ -95,16 +95,24 @@ def setup_rich_menu(dashboard_url: str):
         return
 
     # 3. Upload image
-    image_path = project_root / "frontend" / "public" / "rich_menu_template.png"
-    if not image_path.exists():
-        print(f"Error: Rich menu image not found at {image_path}")
+    jpg_path = project_root / "frontend" / "public" / "rich_menu_template.jpg"
+    png_path = project_root / "frontend" / "public" / "rich_menu_template.png"
+    
+    if jpg_path.exists():
+        image_path = jpg_path
+        content_type = "image/jpeg"
+    elif png_path.exists():
+        image_path = png_path
+        content_type = "image/png"
+    else:
+        print(f"Error: Rich menu image template not found at {png_path} or {jpg_path}")
         return
 
-    print(f"Uploading image from {image_path}...")
+    print(f"Uploading image from {image_path} ({content_type})...")
     upload_url = f"https://api-data.line.me/v2/bot/richmenu/{rich_menu_id}/content"
     upload_headers = {
         "Authorization": f"Bearer {token}",
-        "Content-Type": "image/png"
+        "Content-Type": content_type
     }
     try:
         with open(image_path, "rb") as f:
