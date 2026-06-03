@@ -100,7 +100,9 @@ def fetch_target_courses(session):
 
 
 def get_content_hash(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    # 移除日期字串中的星期標示（如 (五)、(Fri)），避免因為系統語系切換造成 Hash 改變
+    sanitized_text = re.sub(r"(?<=日)\s*\([a-zA-Z\u4e00-\u9fa5]+\)", "", text)
+    return hashlib.sha256(sanitized_text.encode("utf-8")).hexdigest()
 
 
 def parse_moodle_date(date_str):
@@ -170,6 +172,9 @@ def fetch_inner_details(session, url, item_type):
 
         main_content = soup.find("div", role="main")
         if main_content:
+            # 移除可能含有動態 Token 的隱藏腳本與樣式，以及倒數計時用的狀態表格
+            for tag in main_content.find_all(["script", "style"]):
+                tag.extract()
             for table in main_content.find_all("table", class_="generaltable"):
                 table.extract()
             details["hash"] = get_content_hash(main_content.get_text(strip=True))
