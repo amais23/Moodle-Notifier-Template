@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, Request, Header, HTTPException
 from fastapi.responses import JSONResponse
 from src.config import Config
-from server.handlers.command_handlers import handle_command
+from server.handlers.command_handlers import handle_command, build_error_flex, send_line_reply
 
 router = APIRouter()
 
@@ -79,6 +79,11 @@ async def line_webhook(
                     await handle_command(text, reply_token, config)
                 except Exception as e:
                     print(f"[ERROR] Exception processing command '{text}': {e}")
+                    try:
+                        err_flex = build_error_flex("系統執行錯誤", f"執行指令 '{text}' 時發生錯誤：\n{e}")
+                        send_line_reply(reply_token, err_flex, config.line_token)
+                    except Exception as reply_err:
+                        print(f"[ERROR] Failed to send error reply: {reply_err}")
 
         # 處理 Postback 事件
         elif event_type == "postback":
@@ -88,5 +93,10 @@ async def line_webhook(
                     await handle_command(f"/postback {data}", reply_token, config)
                 except Exception as e:
                     print(f"[ERROR] Exception processing postback '{data}': {e}")
+                    try:
+                        err_flex = build_error_flex("系統執行錯誤", f"處理回傳動作時發生錯誤：\n{e}")
+                        send_line_reply(reply_token, err_flex, config.line_token)
+                    except Exception as reply_err:
+                        print(f"[ERROR] Failed to send error reply: {reply_err}")
 
     return JSONResponse(status_code=200, content={"status": "ok"})

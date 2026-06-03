@@ -1,7 +1,9 @@
 import asyncio
 import os
+import urllib.parse
 from datetime import datetime
 import time
+from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import discord
 from discord import app_commands
@@ -327,6 +329,189 @@ def init_bot(config: Config):
             )
 
         await interaction.followup.send(embed=embed)
+
+    async def course_name_autocomplete(
+        interaction: discord.Interaction,
+        current: str
+    ) -> List[app_commands.Choice[str]]:
+        try:
+            client = get_moodle_client(config)
+            loop = asyncio.get_event_loop()
+            courses_data = await loop.run_in_executor(None, client.get_user_courses)
+            semester_courses = [c for c in courses_data if config.target_semester in c.get("fullname", "")]
+            
+            choices = []
+            for c in semester_courses:
+                clean_name = get_clean_name(c["fullname"])
+                if current.lower() in clean_name.lower():
+                    choices.append(app_commands.Choice(name=clean_name, value=clean_name))
+            return choices[:25]
+        except Exception as e:
+            print(f"[ERROR] Autocomplete error: {e}")
+            return []
+
+    @bot.tree.command(name="announcements", description="取得指定課程最新公告")
+    @app_commands.describe(course_name="請選擇課程名稱", filter_type="選擇要讀取的公告範圍")
+    @app_commands.choices(filter_type=[
+        app_commands.Choice(name="📅 7天內最新", value="7days"),
+        app_commands.Choice(name="📜 歷史前5則", value="all")
+    ])
+    async def announcements_command(
+        interaction: discord.Interaction,
+        course_name: str,
+        filter_type: str = "7days"
+    ):
+        await interaction.response.defer()
+        try:
+            client = get_moodle_client(config)
+            courses_data = client.get_user_courses()
+            semester_courses = [c for c in courses_data if config.target_semester in c.get("fullname", "")]
+            
+            target_course = None
+            for c in semester_courses:
+                if get_clean_name(c["fullname"]) == course_name:
+                    target_course = c
+                    break
+            
+            if not target_course:
+                for c in semester_courses:
+                    if course_name.lower() in get_clean_name(c["fullname"]).lower():
+                        target_course = c
+                        break
+                        
+            if not target_course:
+                embed = discord.Embed(title="❌ 找不到課程", description=f"找不到名為 '{course_name}' 的監控課程，請重新選擇。", color=15961000)
+                await interaction.followup.send(embed=embed)
+                return
+                
+            from server.handlers.command_handlers import get_course_announcements
+            loop = asyncio.get_event_loop()
+            discussions = await loop.run_in_executor(
+                None, get_course_announcements, client, target_course["id"], filter_type
+            )
+            
+            title_suffix = "最新公告 (7天內)" if filter_type == "7days" else "歷史公告"
+            embed = discord.Embed(
+                title=f"📢 {course_name} - {title_suffix}",
+                color=9024762
+            )
+            
+            if not discussions:
+                embed.description = "📭 目前無公告內容"
+            else:
+                for disc in discussions[:5]:
+                    subject = disc.get("subject", "無主旨")
+                    author = disc.get("userfullname", "未知講師")
+                    created_ts = disc.get("created", 0)
+                    created_str = datetime.fromtimestamp(created_ts).strftime("%m/%d %H:%M") if created_ts else ""
+                    
+                    preview = html_to_text(disc.get("message", ""))
+                    if len(preview) > 150:
+                        preview = preview[:150] + "..."
+                        
+                    embed.add_field(
+                        name=f"📌 {subject}",
+                        value=f"👤 {author} | ⏰ {created_str}\n{preview}",
+                        inline=False
+                    )
+                    
+            await interaction.followup.send(embed=embed)
+        except Exception as e:
+            embed = discord.Embed(title="❌ 取得公告失敗", description=str(e), color=15961000)
+            await interaction.followup.send(embed=embed)
+
+    @announcements_command.autocomplete("course_name")
+    async def announcements_autocomplete(
+        interaction: discord.Interaction,
+        current: str
+    ) -> List[app_commands.Choice[str]]:
+        return await course_name_autocomplete(interaction, current)
+
+    @bot.tree.command(name="files", description="取得課程教材與講義檔案清單")
+    @app_commands.describe(course_name="請選擇課程名稱")
+    async def files_command(
+        interaction: discord.Interaction,
+        course_name: str
+    ):
+        await interaction.response.defer()
+        try:
+            client = get_moodle_client(config)
+            courses_data = client.get_user_courses()
+            semester_courses = [c for c in courses_data if config.target_semester in c.get("fullname", "")]
+            
+            target_course = None
+            for c in semester_courses:
+                if get_clean_name(c["fullname"]) == course_name:
+                    target_course = c
+                    break
+            
+            if not target_course:
+                for c in semester_courses:
+                    if course_name.lower() in get_clean_name(c["fullname"]).lower():
+                        target_course = c
+                        break
+                        
+            if not target_course:
+                embed = discord.Embed(title="❌ 找不到課程", description=f"找不到名為 '{course_name}' 的監控課程，請重新選擇。", color=15961000)
+                await interaction.followup.send(embed=embed)
+                return
+                
+            from server.handlers.command_handlers import extract_course_files
+            loop = asyncio.get_event_loop()
+            contents = await loop.run_in_executor(None, client.get_course_contents, target_course["id"])
+            files = extract_course_files(contents)
+            
+            embed = discord.Embed(
+                title=f"📁 {course_name} 課程講義",
+                color=9024762
+            )
+            
+            if not files:
+                embed.description = "📭 目前無講義或教材檔案"
+                await interaction.followup.send(embed=embed)
+            else:
+                dashboard_url = os.environ.get("DASHBOARD_URL", "https://moodle-notifier-c.onrender.com")
+                token = client.token
+                
+                lines = []
+                import urllib.parse
+                for i, f in enumerate(files[:15]):
+                    fsize = f["size"]
+                    if fsize >= 1024 * 1024:
+                        size_str = f" ({fsize / (1024 * 1024):.1f} MB)"
+                    elif fsize >= 1024:
+                        size_str = f" ({fsize / 1024:.1f} KB)"
+                    elif fsize > 0:
+                        size_str = f" ({fsize} B)"
+                    else:
+                        size_str = ""
+                        
+                    encoded_url = urllib.parse.quote_plus(f["url"])
+                    dl_url = f"{dashboard_url.rstrip('/')}/api/download?url={encoded_url}&token={token}"
+                    lines.append(f"{i+1}. 📄 **{f['name']}**{size_str} — [⬇️ 點此下載]({dl_url})")
+                    
+                embed.description = "\n".join(lines)
+                
+                view = discord.ui.View()
+                for f in files[:5]:
+                    encoded_url = urllib.parse.quote_plus(f["url"])
+                    dl_url = f"{dashboard_url.rstrip('/')}/api/download?url={encoded_url}&token={token}"
+                    label = f"⬇️ {f['name']}"
+                    if len(label) > 80:
+                        label = label[:77] + "..."
+                    view.add_item(discord.ui.Button(label=label, url=dl_url, style=discord.ButtonStyle.link))
+                    
+                await interaction.followup.send(embed=embed, view=view)
+        except Exception as e:
+            embed = discord.Embed(title="❌ 取得檔案失敗", description=str(e), color=15961000)
+            await interaction.followup.send(embed=embed)
+
+    @files_command.autocomplete("course_name")
+    async def files_autocomplete(
+        interaction: discord.Interaction,
+        current: str
+    ) -> List[app_commands.Choice[str]]:
+        return await course_name_autocomplete(interaction, current)
 
 
 async def start_discord_bot(config: Config):

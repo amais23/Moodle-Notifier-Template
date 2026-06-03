@@ -1,8 +1,40 @@
 import requests
 import time
+import threading
 from typing import List, Dict, Any, Optional
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
+
+# 全域執行緒安全快取與鎖定
+_moodle_api_cache: Dict[tuple, tuple] = {}  # (token, function, params_key) -> (expiry_timestamp, data)
+_moodle_cache_locks: Dict[tuple, threading.Lock] = {}
+_moodle_global_lock = threading.Lock()
+
+# 快取生命週期 (TTL) 配置 (秒)
+_moodle_cache_ttl = {
+    "core_webservice_get_site_info": 600,             # 10 分鐘
+    "core_enrol_get_users_courses": 600,              # 10 分鐘
+    "core_course_get_contents": 600,                  # 10 分鐘
+    "gradereport_user_get_grade_items": 180,           # 3 分鐘
+    "mod_assign_get_assignments": 180,                # 3 分鐘
+    "mod_assign_get_submission_status": 180,          # 3 分鐘
+    "core_calendar_get_action_events_by_timesort": 180, # 3 分鐘
+    "core_message_get_unread_conversation_counts": 60, # 1 分鐘
+    "core_message_get_conversations": 60,             # 1 分鐘
+}
+
+def _make_cache_key(token: str, function: str, params: Optional[Dict[str, Any]]) -> tuple:
+    if params is None:
+        params_key = ()
+    else:
+        params_key = tuple(sorted((k, str(v)) for k, v in params.items()))
+    return (token, function, params_key)
+
+def _get_lock_for_key(key: tuple) -> threading.Lock:
+    with _moodle_global_lock:
+        if key not in _moodle_cache_locks:
+            _moodle_cache_locks[key] = threading.Lock()
+        return _moodle_cache_locks[key]
 
 class MoodleClient:
     """Moodle Web Services API 客戶端"""
@@ -16,14 +48,26 @@ class MoodleClient:
         self.user_id: Optional[int] = None
         self.fullname: str = ""
         
-        # 建立 Session 並配置自動重試
+        # 建立 Session 並配置自動重試 (包含 POST 請求)
         self.session = requests.Session()
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[500, 502, 503, 504],
-            raise_on_status=False
-        )
+        try:
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504],
+                raise_on_status=False,
+                allowed_methods=None  # 允許 POST 等所有方法重試
+            )
+        except TypeError:
+            # 相容舊版 urllib3
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504],
+                raise_on_status=False,
+                method_whitelist=None
+            )
+            
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
@@ -37,12 +81,19 @@ class MoodleClient:
             "service": "moodle_mobile_app",
         }
         
-        try:
-            res = self.session.post(url, data=payload, timeout=self.timeout)
-            res.raise_for_status()
-            data = res.json()
-        except Exception as e:
-            raise RuntimeError(f"連線至 Moodle 伺服器失敗: {e}")
+        last_err = None
+        for attempt in range(3):
+            try:
+                res = self.session.post(url, data=payload, timeout=self.timeout)
+                res.raise_for_status()
+                data = res.json()
+                break
+            except Exception as e:
+                last_err = e
+                if attempt < 2:
+                    time.sleep(1)
+        else:
+            raise RuntimeError(f"連線至 Moodle 伺服器失敗: {last_err}")
             
         if "token" in data:
             self.token = data["token"]
@@ -64,27 +115,58 @@ class MoodleClient:
             # 延遲驗證
             self.authenticate()
             
-        url = f"{self.base_url}/webservice/rest/server.php"
-        payload = {
-            "wstoken": self.token,
-            "wsfunction": function,
-            "moodlewsrestformat": "json",
-        }
-        if params:
-            payload.update(params)
+        # 1. 產生 Cache Key
+        key = _make_cache_key(self.token or "", function, params)
+        ttl = _moodle_cache_ttl.get(function, 180)  # 預設 3 分鐘
+        
+        # 2. 第一次快取檢查
+        now = time.time()
+        if key in _moodle_api_cache:
+            expiry, cached_data = _moodle_api_cache[key]
+            if now < expiry:
+                return cached_data
+                
+        # 3. 快取未命中，獲取 Key 級別的鎖以合併並發請求
+        lock = _get_lock_for_key(key)
+        with lock:
+            # 4. 第二次快取檢查 (Double-Check)
+            now = time.time()
+            if key in _moodle_api_cache:
+                expiry, cached_data = _moodle_api_cache[key]
+                if now < expiry:
+                    return cached_data
             
-        try:
-            res = self.session.post(url, data=payload, timeout=self.timeout)
-            res.raise_for_status()
-            data = res.json()
-        except Exception as e:
-            raise RuntimeError(f"呼叫 API {function} 失敗: {e}")
-            
-        # Moodle API 錯誤通常會回傳一個包含 exception 的 JSON 物件
-        if isinstance(data, dict) and "exception" in data:
-            raise RuntimeError(f"Moodle API 回傳異常 ({function}): {data.get('message')}")
-            
-        return data
+            # 5. 進行真實請求
+            url = f"{self.base_url}/webservice/rest/server.php"
+            payload = {
+                "wstoken": self.token,
+                "wsfunction": function,
+                "moodlewsrestformat": "json",
+            }
+            if params:
+                payload.update(params)
+                
+            last_err = None
+            for attempt in range(3):
+                try:
+                    res = self.session.post(url, data=payload, timeout=self.timeout)
+                    res.raise_for_status()
+                    data = res.json()
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < 2:
+                        time.sleep(1)
+            else:
+                raise RuntimeError(f"呼叫 API {function} 失敗: {last_err}")
+                
+            # Moodle API 錯誤通常會回傳一個包含 exception 的 JSON 物件
+            if isinstance(data, dict) and "exception" in data:
+                raise RuntimeError(f"Moodle API 回傳異常 ({function}): {data.get('message')}")
+                
+            # 寫入快取
+            _moodle_api_cache[key] = (time.time() + ttl, data)
+            return data
 
     # --- 課程 API ---
     def get_user_courses(self) -> List[Dict[str, Any]]:
