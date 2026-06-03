@@ -212,4 +212,10 @@ moodle_pass.txt
 line_user.txt
 line_token.txt
 moodle_data_*.json
+moodle_credentials.json
+
+# Test/exploration scripts (not part of the main project)
+test_*.py
+list_all_apis.py
+api_list.json
 
